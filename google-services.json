@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "794278314561",
+    "project_id": "expence-tracker-9cf71",
+    "storage_bucket": "expence-tracker-9cf71.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:794278314561:android:8af9bec3e18600f3fdbcc0",
+        "android_client_info": {
+          "package_name": "com.devak_klm.expensetrackerapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCkdkpOcFuI3ikt4QDgCzWCsJwJGXaI0MA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
