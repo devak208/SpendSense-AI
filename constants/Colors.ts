@@ -1,6 +1,6 @@
-// Theme colors - Navi-inspired exact theme
+// Theme colors - Navi-inspired with Brown/Gold accents
 export const Colors = {
-  // Base colors (pure white, minimal)
+  // Base colors
   background: '#FFFFFF',
   card: '#FFFFFF',
   cardHover: '#F8F9FA',
@@ -12,14 +12,20 @@ export const Colors = {
   primaryDark: '#094D40',
   primaryMuted: '#E8F5F2',
   
-  // Secondary (dark navy for buttons)
+  // Secondary (dark navy/black for buttons)
   secondary: '#1A1D29',
   secondaryLight: '#2D3142',
   
-  // Accent colors
-  accent: '#FFB800', // Yellow/gold
-  accentOrange: '#FF6B35',
-  accentPurple: '#7B2CBF',
+  // Brown/Gold accents (like Navi)
+  brown: '#8B5A2B',
+  brownLight: '#D4A574',
+  gold: '#FFB800',
+  goldLight: '#FFF4D6',
+  cream: '#FDF8F3',
+  
+  // Feature card gradients
+  featureStart: '#FDF6E3',
+  featureEnd: '#FFFFFF',
   
   // Status colors
   success: '#0C6B58',
@@ -29,13 +35,13 @@ export const Colors = {
   error: '#DC3545',
   errorLight: '#FDE8EA',
   
-  // Text colors (Navi uses very dark navy)
+  // Text colors
   textPrimary: '#1A1D29',
   textSecondary: '#6C7280',
   textMuted: '#9CA3AF',
   textLight: '#FFFFFF',
   
-  // Border (very subtle gray)
+  // Border
   border: '#E8EAED',
   borderLight: '#F3F4F6',
   
@@ -43,7 +49,7 @@ export const Colors = {
   tabBar: '#FFFFFF',
   tabBarBorder: '#E8EAED',
   
-  // Shadows (very subtle)
+  // Shadows
   shadow: 'rgba(0, 0, 0, 0.04)',
   shadowMedium: 'rgba(0, 0, 0, 0.08)',
   
@@ -59,9 +65,8 @@ export const Colors = {
   } as Record<string, string>,
 };
 
-// Category icons mapping (using Feather icons)
+// Category icons mapping
 export const CategoryIcons: Record<string, string> = {
-  // Expense categories
   Food: 'coffee',
   Transport: 'truck',
   Shopping: 'shopping-bag',
@@ -69,7 +74,6 @@ export const CategoryIcons: Record<string, string> = {
   Entertainment: 'film',
   Health: 'heart',
   Other: 'package',
-  // Income categories
   Salary: 'briefcase',
   Freelance: 'code',
   Business: 'trending-up',

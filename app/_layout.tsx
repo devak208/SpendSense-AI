@@ -10,6 +10,8 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 
+import { SMSTransactionProvider } from '@/context/SMSTransactionContext';
+
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
 
@@ -33,22 +35,34 @@ const tokenCache = {
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
-// Custom dark theme for expense tracker
+// Custom theme for expense tracker
 const ExpenseTrackerTheme = {
-  ...DarkTheme,
+  ...DarkTheme, // Keeping DarkTheme base for navigation structure but overriding colors
   colors: {
     ...DarkTheme.colors,
-    primary: '#7C3AED',
-    background: '#0D0D0D',
-    card: '#1A1A2E',
-    text: '#FFFFFF',
-    border: '#2D2D44',
-    notification: '#7C3AED',
+    primary: '#0C6B58', // Colors.primary
+    background: '#FFFFFF', // Colors.background
+    card: '#FFFFFF', // Colors.card
+    text: '#1A1D29', // Colors.textPrimary
+    border: '#E8EAED', // Colors.border
+    notification: '#0C6B58', // Colors.primary
   },
 };
 
 import '../lib/notifications'; // Ensure handler and channels are set up
 import * as Notifications from 'expo-notifications';
+import { checkAndRequestAllPermissions } from '@/lib/permissions';
+import { registerSMSBackgroundService } from '@/lib/foregroundService';
+import notifee from '@notifee/react-native';
+
+// Register the background service task
+registerSMSBackgroundService();
+
+// Register background event handler to silence warnings and handle actions
+notifee.onBackgroundEvent(async ({ type, detail }) => {
+  console.log('Notifee background event:', type, detail);
+  // Actions are handled via launchActivity: 'default' which opens the app
+});
 
 function AuthLayout() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -56,6 +70,11 @@ function AuthLayout() {
   const pathname = usePathname();
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
+
+  // Initial Permission Check
+  useEffect(() => {
+    checkAndRequestAllPermissions();
+  }, []);
 
   // Debug: Listen for notifications
   useEffect(() => {
@@ -124,7 +143,7 @@ function AuthLayout() {
   if (!isLoaded) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#7C3AED" />
+        <ActivityIndicator size="large" color="#0C6B58" />
       </View>
     );
   }
@@ -138,7 +157,7 @@ export default function RootLayout() {
     return (
       <SafeAreaProvider>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#7C3AED" />
+          <ActivityIndicator size="large" color="#0C6B58" />
         </View>
       </SafeAreaProvider>
     );
@@ -148,8 +167,10 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
         <ThemeProvider value={ExpenseTrackerTheme}>
-          <AuthLayout />
-          <StatusBar style="light" />
+          <SMSTransactionProvider>
+            <AuthLayout />
+          </SMSTransactionProvider>
+          <StatusBar style="dark" />
         </ThemeProvider>
       </ClerkProvider>
     </SafeAreaProvider>
@@ -161,6 +182,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0D0D0D',
+    backgroundColor: '#FFFFFF', // Colors.background
   },
 });

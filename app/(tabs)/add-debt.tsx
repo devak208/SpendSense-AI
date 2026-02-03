@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { Colors } from '@/constants/Colors';
 import { createDebt, createReminder, getUserByClerkId } from '@/lib/supabase';
@@ -52,15 +53,13 @@ export default function AddDebtScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderSchedule, setReminderSchedule] = useState('once');
-  const [reminderDayOfWeek, setReminderDayOfWeek] = useState(1); // Monday
+  const [reminderDayOfWeek, setReminderDayOfWeek] = useState(1);
   const [reminderDayOfMonth, setReminderDayOfMonth] = useState(1);
-  const [reminderTime, setReminderTime] = useState(new Date(2000, 0, 1, 9, 0)); // 9:00 AM
+  const [reminderTime, setReminderTime] = useState(new Date(2000, 0, 1, 9, 0));
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    initUser();
-  }, [userId]);
+  useEffect(() => { initUser(); }, [userId]);
 
   const initUser = async () => {
     if (!userId) return;
@@ -104,7 +103,6 @@ export default function AddDebtScreen() {
         reminder_time: reminderEnabled ? timeStr : undefined,
       });
 
-      // Create initial reminder if enabled
       if (reminderEnabled && debt.id) {
         const scheduledFor = calculateNextReminderDate();
         if (scheduledFor) {
@@ -155,358 +153,746 @@ export default function AddDebtScreen() {
     const timeStr = reminderTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
     switch (reminderSchedule) {
       case 'once':
-        return `One-time reminder at ${timeStr}`;
+        return `One-time at ${timeStr}`;
       case 'daily':
         return `Daily at ${timeStr}`;
       case 'weekly':
         return `Every ${DAYS_OF_WEEK[reminderDayOfWeek]} at ${timeStr}`;
       case 'monthly':
         const suffix = reminderDayOfMonth === 1 ? 'st' : reminderDayOfMonth === 2 ? 'nd' : reminderDayOfMonth === 3 ? 'rd' : 'th';
-        return `Monthly on the ${reminderDayOfMonth}${suffix} at ${timeStr}`;
+        return `${reminderDayOfMonth}${suffix} of month at ${timeStr}`;
       default:
         return '';
     }
   };
 
+  const isOwed = direction === 'owed';
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Feather name="arrow-left" size={24} color={Colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.title}>Add Debt/Bill</Text>
-          <View style={{ width: 24 }} />
-        </View>
-
-        {/* Direction Toggle */}
-        <View style={styles.directionToggle}>
-          <TouchableOpacity
-            style={[styles.directionBtn, direction === 'owed' && styles.directionBtnActive]}
-            onPress={() => setDirection('owed')}
-          >
-            <Text style={[styles.directionText, direction === 'owed' && styles.directionTextActive]}>
-              I Owe
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.directionBtn, direction === 'receivable' && styles.directionBtnActive]}
-            onPress={() => setDirection('receivable')}
-          >
-            <Text style={[styles.directionText, direction === 'receivable' && styles.directionTextActive]}>
-              Owed to Me
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Name */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Name</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g., House Rent, Netflix"
-            placeholderTextColor={Colors.textSecondary}
-            value={name}
-            onChangeText={setName}
-          />
-        </View>
-
-        {/* Amount */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Amount</Text>
-          <View style={styles.amountContainer}>
-            <Text style={styles.currency}>₹</Text>
-            <TextInput
-              style={styles.amountInput}
-              placeholder="0"
-              placeholderTextColor={Colors.textSecondary}
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="decimal-pad"
-            />
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Header with Gradient */}
+        <LinearGradient
+          colors={[isOwed ? Colors.errorLight : Colors.successLight, Colors.background]}
+          style={styles.headerGradient}
+        >
+          {/* Back Button */}
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+              <Feather name="arrow-left" size={20} color={Colors.textPrimary} />
+            </TouchableOpacity>
+            <Text style={styles.title}>Add Debt/Bill</Text>
+            <View style={{ width: 36 }} />
           </View>
-        </View>
 
-        {/* Type */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Type</Text>
-          <View style={styles.typeGrid}>
-            {DEBT_TYPES.map((type) => (
+          {/* Decorative Card */}
+          <View style={styles.featureCard}>
+            <View style={styles.featureContent}>
+              <Text style={styles.featureTitle}>
+                {isOwed ? (
+                  <><Text style={{ color: Colors.error }}>Track</Text> what you owe</>
+                ) : (
+                  <><Text style={{ color: Colors.success }}>Track</Text> what's owed to you</>
+                )}
+              </Text>
+              <Text style={styles.featureSubtitle}>Add reminders to never miss a payment</Text>
+            </View>
+            <View style={styles.featureDecor}>
+              <View style={[styles.decorCircle1, !isOwed && { backgroundColor: Colors.successLight }]} />
+              <View style={[styles.decorCircle2, !isOwed && { backgroundColor: Colors.successLight }]} />
+              <View style={styles.decorIcon}>
+                <Feather name={isOwed ? 'arrow-up-right' : 'arrow-down-left'} size={20} color={isOwed ? Colors.error : Colors.success} />
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
+
+        <View style={styles.form}>
+          {/* Direction Toggle */}
+          <View style={styles.toggleWrapper}>
+            <View style={styles.toggleTrack}>
               <TouchableOpacity
-                key={type.id}
-                style={[styles.typeItem, debtType === type.id && styles.typeItemActive]}
-                onPress={() => setDebtType(type.id)}
+                style={[styles.toggleOption, isOwed && styles.toggleOptionOwedActive]}
+                onPress={() => setDirection('owed')}
               >
-                <Feather
-                  name={type.icon as any}
-                  size={20}
-                  color={debtType === type.id ? '#FFFFFF' : Colors.textSecondary}
-                />
-                <Text style={[styles.typeText, debtType === type.id && styles.typeTextActive]}>
-                  {type.label}
-                </Text>
+                <Feather name="arrow-up-right" size={14} color={isOwed ? '#FFF' : Colors.textSecondary} />
+                <Text style={[styles.toggleLabel, isOwed && styles.toggleLabelActive]}>I Owe</Text>
               </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Reminder */}
-        <View style={styles.reminderSection}>
-          <View style={styles.reminderHeader}>
-            <View style={styles.reminderHeaderLeft}>
-              <Feather name="bell" size={20} color={reminderEnabled ? Colors.primary : Colors.textSecondary} />
-              <Text style={[styles.switchLabel, reminderEnabled && styles.switchLabelActive]}>Reminder</Text>
+              <TouchableOpacity
+                style={[styles.toggleOption, !isOwed && styles.toggleOptionReceivableActive]}
+                onPress={() => setDirection('receivable')}
+              >
+                <Feather name="arrow-down-left" size={14} color={!isOwed ? '#FFF' : Colors.textSecondary} />
+                <Text style={[styles.toggleLabel, !isOwed && styles.toggleLabelActive]}>Owed to Me</Text>
+              </TouchableOpacity>
             </View>
-            <Switch
-              value={reminderEnabled}
-              onValueChange={setReminderEnabled}
-              trackColor={{ false: Colors.border, true: Colors.primary }}
-              thumbColor={Colors.textPrimary}
+          </View>
+
+          {/* Name */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Name</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g., House Rent, Netflix"
+              placeholderTextColor={Colors.textMuted}
+              value={name}
+              onChangeText={setName}
             />
           </View>
 
-        {/* Reminder Settings */}
-        {reminderEnabled && (
-          <View style={styles.reminderSettings}>
-            {/* Reminder Summary Preview */}
-            <View style={styles.reminderSummaryBox}>
-              <Feather name="bell" size={18} color={Colors.primary} />
-              <Text style={styles.reminderSummaryText}>{getReminderSummary()}</Text>
-              {reminderSchedule !== 'once' && (
-                <View style={styles.repeatingBadge}>
-                  <Feather name="repeat" size={12} color={Colors.success} />
-                  <Text style={styles.repeatingText}>Repeats</Text>
-                </View>
-              )}
+          {/* Amount */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Amount</Text>
+            <View style={[styles.amountContainer, !isOwed && { borderColor: Colors.success + '40' }]}>
+              <Text style={[styles.currencySymbol, !isOwed && { color: Colors.success }]}>
+                {isOwed ? '-' : '+'} ₹
+              </Text>
+              <TextInput
+                style={styles.amountInput}
+                placeholder="0"
+                placeholderTextColor={Colors.textMuted}
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="decimal-pad"
+              />
             </View>
+          </View>
 
-            <Text style={styles.subLabel}>How often?</Text>
-            <View style={styles.scheduleRow}>
-              {REMINDER_SCHEDULES.map((s) => (
+          {/* Type */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Type</Text>
+            <View style={styles.typeGrid}>
+              {DEBT_TYPES.map((type) => (
                 <TouchableOpacity
-                  key={s.id}
-                  style={[styles.scheduleChip, reminderSchedule === s.id && styles.scheduleChipActive]}
-                  onPress={() => setReminderSchedule(s.id)}
+                  key={type.id}
+                  style={[styles.typeItem, debtType === type.id && styles.typeItemActive]}
+                  onPress={() => setDebtType(type.id)}
                 >
-                  <Text style={[styles.scheduleText, reminderSchedule === s.id && styles.scheduleTextActive]}>
-                    {s.label}
+                  <Feather
+                    name={type.icon as any}
+                    size={16}
+                    color={debtType === type.id ? '#FFFFFF' : Colors.textSecondary}
+                  />
+                  <Text style={[styles.typeText, debtType === type.id && styles.typeTextActive]}>
+                    {type.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
+          </View>
 
-            {reminderSchedule === 'weekly' && (
-              <>
-                <Text style={styles.subLabel}>Which day?</Text>
-                <View style={styles.daysRow}>
-                  {DAYS_OF_WEEK.map((d, i) => (
-                    <TouchableOpacity
-                      key={i}
-                      style={[styles.dayChip, reminderDayOfWeek === i && styles.dayChipActive]}
-                      onPress={() => setReminderDayOfWeek(i)}
-                    >
-                      <Text style={[styles.dayText, reminderDayOfWeek === i && styles.dayTextActive]}>
-                        {d}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+          {/* Due Date */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Due Date (Optional)</Text>
+            <View style={styles.dateRow}>
+              <TouchableOpacity 
+                style={styles.dateButton} 
+                onPress={() => setShowDatePicker(true)}
+              >
+                <View style={[styles.dateIcon, { backgroundColor: Colors.goldLight }]}>
+                  <Feather name="calendar" size={16} color={Colors.gold} />
                 </View>
-              </>
-            )}
-
-            {reminderSchedule === 'monthly' && (
-              <>
-                <Text style={styles.subLabel}>Which day of month?</Text>
-                <View style={styles.dayOfMonthRow}>
-                  {[1, 5, 10, 15, 20, 25, 28].map((day) => (
-                    <TouchableOpacity
-                      key={day}
-                      style={[styles.dayChip, reminderDayOfMonth === day && styles.dayChipActive]}
-                      onPress={() => setReminderDayOfMonth(day)}
-                    >
-                      <Text style={[styles.dayText, reminderDayOfMonth === day && styles.dayTextActive]}>
-                        {day}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                  <TextInput
-                    style={[styles.dayInput, { minWidth: 50 }]}
-                    value={reminderDayOfMonth > 0 ? String(reminderDayOfMonth) : ''}
-                    onChangeText={(t) => {
-                      if (t === '') {
-                        setReminderDayOfMonth(0);
-                      } else {
-                        const num = parseInt(t, 10);
-                        if (!isNaN(num)) {
-                          setReminderDayOfMonth(Math.min(31, Math.max(1, num)));
-                        }
-                      }
-                    }}
-                    onBlur={() => {
-                      if (reminderDayOfMonth < 1) setReminderDayOfMonth(1);
-                    }}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                    placeholder="Day"
-                    placeholderTextColor={Colors.textSecondary}
-                    selectTextOnFocus
-                  />
-                </View>
-              </>
-            )}
-
-            <Text style={styles.subLabel}>At what time?</Text>
-            <TouchableOpacity style={styles.timeButton} onPress={() => setShowTimePicker(true)}>
-              <Feather name="clock" size={18} color={Colors.primary} />
-              <Text style={styles.timeText}>
-                {reminderTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
-              </Text>
-            </TouchableOpacity>
-            {showTimePicker && (
+                <Text style={[styles.dateText, !dueDate && styles.dateTextPlaceholder]}>
+                  {dueDate ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Select date'}
+                </Text>
+                <Feather name="chevron-right" size={18} color={Colors.textSecondary} />
+              </TouchableOpacity>
+              {dueDate && (
+                <TouchableOpacity 
+                  style={styles.clearButton} 
+                  onPress={() => setDueDate(null)}
+                >
+                  <Feather name="x" size={16} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            {showDatePicker && (
               <DateTimePicker
-                value={reminderTime}
-                mode="time"
-                display="spinner"
-                onChange={(e, time) => {
-                  setShowTimePicker(Platform.OS === 'ios');
-                  if (time) setReminderTime(time);
+                value={dueDate || new Date()}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(e, date) => {
+                  setShowDatePicker(Platform.OS === 'ios');
+                  if (date) setDueDate(date);
                 }}
                 themeVariant="light"
               />
             )}
           </View>
-        )}
-        </View>
 
-        {/* Due Date */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Due Date</Text>
-          <View style={styles.dueDateRow}>
-            <TouchableOpacity 
-              style={[styles.dateButton, { flex: 1 }]} 
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Feather name="calendar" size={20} color={dueDate ? Colors.primary : Colors.textSecondary} />
-              <Text style={[styles.dateText, !dueDate && styles.dateTextPlaceholder]}>
-                {dueDate ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Select date'}
-              </Text>
-            </TouchableOpacity>
-            {dueDate && (
-              <TouchableOpacity 
-                style={styles.clearDateButton} 
-                onPress={() => setDueDate(null)}
-              >
-                <Feather name="x" size={18} color={Colors.textSecondary} />
-              </TouchableOpacity>
+          {/* Reminder Section */}
+          <View style={styles.reminderCard}>
+            <View style={styles.reminderHeader}>
+              <View style={styles.reminderHeaderLeft}>
+                <View style={[styles.bellIcon, reminderEnabled && { backgroundColor: Colors.goldLight }]}>
+                  <Feather name="bell" size={16} color={reminderEnabled ? Colors.gold : Colors.textSecondary} />
+                </View>
+                <View>
+                  <Text style={[styles.reminderTitle, reminderEnabled && { color: Colors.gold }]}>Reminder</Text>
+                  <Text style={styles.reminderSubtitle}>Get notified before due</Text>
+                </View>
+              </View>
+              <Switch
+                value={reminderEnabled}
+                onValueChange={setReminderEnabled}
+                trackColor={{ false: Colors.border, true: Colors.gold }}
+                thumbColor={'#FFF'}
+              />
+            </View>
+
+            {reminderEnabled && (
+              <View style={styles.reminderSettings}>
+                {/* Summary Preview */}
+                <View style={styles.reminderSummaryBox}>
+                  <Feather name="clock" size={14} color={Colors.gold} />
+                  <Text style={styles.reminderSummaryText}>{getReminderSummary()}</Text>
+                  {reminderSchedule !== 'once' && (
+                    <View style={styles.repeatingBadge}>
+                      <Feather name="repeat" size={10} color={Colors.success} />
+                    </View>
+                  )}
+                </View>
+
+                <Text style={styles.subLabel}>Frequency</Text>
+                <View style={styles.scheduleRow}>
+                  {REMINDER_SCHEDULES.map((s) => (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={[styles.scheduleChip, reminderSchedule === s.id && styles.scheduleChipActive]}
+                      onPress={() => setReminderSchedule(s.id)}
+                    >
+                      <Text style={[styles.scheduleText, reminderSchedule === s.id && styles.scheduleTextActive]}>
+                        {s.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {reminderSchedule === 'weekly' && (
+                  <>
+                    <Text style={styles.subLabel}>Day of Week</Text>
+                    <View style={styles.daysRow}>
+                      {DAYS_OF_WEEK.map((d, i) => (
+                        <TouchableOpacity
+                          key={i}
+                          style={[styles.dayChip, reminderDayOfWeek === i && styles.dayChipActive]}
+                          onPress={() => setReminderDayOfWeek(i)}
+                        >
+                          <Text style={[styles.dayText, reminderDayOfWeek === i && styles.dayTextActive]}>
+                            {d}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
+
+                {reminderSchedule === 'monthly' && (
+                  <>
+                    <Text style={styles.subLabel}>Day of Month</Text>
+                    <View style={styles.daysRow}>
+                      {[1, 5, 10, 15, 20, 25, 28].map((day) => (
+                        <TouchableOpacity
+                          key={day}
+                          style={[styles.dayChip, reminderDayOfMonth === day && styles.dayChipActive]}
+                          onPress={() => setReminderDayOfMonth(day)}
+                        >
+                          <Text style={[styles.dayText, reminderDayOfMonth === day && styles.dayTextActive]}>
+                            {day}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
+
+                <Text style={styles.subLabel}>Time</Text>
+                <TouchableOpacity style={styles.timeButton} onPress={() => setShowTimePicker(true)}>
+                  <Feather name="clock" size={16} color={Colors.gold} />
+                  <Text style={styles.timeText}>
+                    {reminderTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                  </Text>
+                </TouchableOpacity>
+                {showTimePicker && (
+                  <DateTimePicker
+                    value={reminderTime}
+                    mode="time"
+                    display="spinner"
+                    onChange={(e, time) => {
+                      setShowTimePicker(Platform.OS === 'ios');
+                      if (time) setReminderTime(time);
+                    }}
+                    themeVariant="light"
+                  />
+                )}
+              </View>
             )}
           </View>
-          {!dueDate && (
-            <Text style={styles.noDueDateHint}>No due date set</Text>
-          )}
-          {showDatePicker && (
-            <DateTimePicker
-              value={dueDate || new Date()}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={(e, date) => {
-                setShowDatePicker(Platform.OS === 'ios');
-                if (date) setDueDate(date);
-              }}
-              themeVariant="light"
+
+          {/* Notes */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Notes (Optional)</Text>
+            <TextInput
+              style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+              placeholder="Add any notes..."
+              placeholderTextColor={Colors.textMuted}
+              value={description}
+              onChangeText={setDescription}
+              multiline
             />
-          )}
-        </View>
+          </View>
 
-        {/* Notes */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Notes</Text>
-          <TextInput
-            style={[styles.input, { minHeight: 80 }]}
-            placeholder="Add notes (optional)..."
-            placeholderTextColor={Colors.textSecondary}
-            value={description}
-            onChangeText={setDescription}
-            multiline
-          />
+          {/* Save Button */}
+          <TouchableOpacity
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+            onPress={handleSave}
+            disabled={saving}
+            activeOpacity={0.8}
+          >
+            {saving ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <>
+                <Feather name="check" size={18} color="#FFFFFF" />
+                <Text style={styles.saveText}>Save Debt</Text>
+                <Text style={styles.saveChevron}>»</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
-
-        {/* Save */}
-        <TouchableOpacity
-          style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-          onPress={handleSave}
-          disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator color={Colors.textPrimary} />
-          ) : (
-            <>
-              <Feather name="check" size={20} color="#FFFFFF" />
-              <Text style={styles.saveText}>Save</Text>
-            </>
-          )}
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  scrollView: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 40 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
-  title: { fontSize: 20, fontWeight: '600', color: Colors.textPrimary },
-  directionToggle: { flexDirection: 'row', backgroundColor: Colors.card, borderRadius: 12, padding: 4, marginBottom: 24 },
-  directionBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10 },
-  directionBtnActive: { backgroundColor: Colors.primary },
-  directionText: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary },
-  directionTextActive: { color: '#FFFFFF' },
-  section: { marginBottom: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary, marginBottom: 8, textTransform: 'uppercase' },
-  subLabel: { fontSize: 12, color: Colors.textSecondary, marginBottom: 8, marginTop: 16 },
-  input: { backgroundColor: Colors.card, borderRadius: 12, padding: 16, fontSize: 16, color: Colors.textPrimary },
-  amountContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: 12, paddingHorizontal: 16 },
-  currency: { fontSize: 24, color: Colors.textSecondary, marginRight: 8 },
-  amountInput: { flex: 1, fontSize: 28, fontWeight: 'bold', color: Colors.textPrimary, paddingVertical: 16 },
-  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  typeItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, gap: 8 },
-  typeItemActive: { backgroundColor: Colors.primary },
-  typeText: { fontSize: 13, color: Colors.textSecondary },
-  typeTextActive: { color: '#FFFFFF' },
-  dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: 12, padding: 16, gap: 12 },
-  dateText: { fontSize: 16, color: Colors.textPrimary },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  switchLabel: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
-  switchHint: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
-  reminderSettings: { backgroundColor: Colors.card, borderRadius: 12, padding: 16, marginTop: 16 },
-  scheduleRow: { flexDirection: 'row', gap: 10 },
-  scheduleChip: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: Colors.background, borderRadius: 20 },
-  scheduleChipActive: { backgroundColor: Colors.primary },
-  scheduleText: { fontSize: 14, color: Colors.textSecondary },
-  scheduleTextActive: { color: '#FFFFFF', fontWeight: '600' },
-  daysRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  dayChip: { paddingHorizontal: 10, paddingVertical: 8, backgroundColor: Colors.background, borderRadius: 8 },
-  dayChipActive: { backgroundColor: Colors.primary },
-  dayText: { fontSize: 12, color: Colors.textSecondary },
-  dayTextActive: { color: '#FFFFFF', fontWeight: '600' },
-  dayOfMonthRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
-  dayInput: { backgroundColor: Colors.background, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, color: Colors.textPrimary, width: 60, textAlign: 'center' },
-  timeButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.background, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, gap: 10, alignSelf: 'flex-start' },
-  timeText: { fontSize: 16, color: Colors.textPrimary, fontWeight: '500' },
-  reminderSummaryBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primary + '15', borderRadius: 10, padding: 12, gap: 10, marginBottom: 8, flexWrap: 'wrap' },
-  reminderSummaryText: { fontSize: 14, color: Colors.textPrimary, fontWeight: '500', flex: 1 },
-  repeatingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.success + '20', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, gap: 4 },
-  repeatingText: { fontSize: 11, color: Colors.success, fontWeight: '600' },
-  reminderSection: { backgroundColor: Colors.card, borderRadius: 16, padding: 16, marginBottom: 20 },
-  reminderHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  reminderHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  switchLabelActive: { color: Colors.primary },
-  dueDateRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dateTextPlaceholder: { color: Colors.textSecondary },
-  clearDateButton: { backgroundColor: Colors.card, padding: 12, borderRadius: 12 },
-  noDueDateHint: { fontSize: 12, color: Colors.textSecondary, marginTop: 8, fontStyle: 'italic' },
-  saveButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary, borderRadius: 16, padding: 18, gap: 8, marginTop: 24 },
-  saveButtonDisabled: { opacity: 0.7 },
-  saveText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
+  container: { 
+    flex: 1, 
+    backgroundColor: Colors.background 
+  },
+  scrollView: { 
+    flex: 1 
+  },
+  scrollContent: { 
+    paddingBottom: 100 
+  },
+
+  // Header with Gradient
+  headerGradient: {
+    paddingBottom: 16,
+  },
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: Colors.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  title: { 
+    fontSize: 18, 
+    fontWeight: '600', 
+    color: Colors.textPrimary 
+  },
+
+  // Decorative Card
+  featureCard: {
+    marginHorizontal: 20,
+    borderRadius: 14,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  featureContent: {
+    flex: 1,
+  },
+  featureTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  featureSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  featureDecor: {
+    width: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  decorCircle1: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.errorLight,
+    opacity: 0.5,
+    top: -5,
+    right: -5,
+  },
+  decorCircle2: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.goldLight,
+    opacity: 0.6,
+    bottom: 0,
+    right: 15,
+  },
+  decorIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  // Form
+  form: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+
+  // Toggle
+  toggleWrapper: { 
+    marginBottom: 20, 
+    alignItems: 'center' 
+  },
+  toggleTrack: { 
+    flexDirection: 'row', 
+    backgroundColor: Colors.card, 
+    borderRadius: 12, 
+    padding: 3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  toggleOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    gap: 6,
+  },
+  toggleOptionOwedActive: {
+    backgroundColor: Colors.error,
+  },
+  toggleOptionReceivableActive: {
+    backgroundColor: Colors.success,
+  },
+  toggleLabel: { 
+    fontSize: 13, 
+    fontWeight: '600', 
+    color: Colors.textSecondary 
+  },
+  toggleLabelActive: { 
+    color: '#FFF' 
+  },
+
+  section: { 
+    marginBottom: 16 
+  },
+  sectionTitle: { 
+    fontSize: 11, 
+    fontWeight: '600', 
+    color: Colors.textMuted, 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.5, 
+    marginBottom: 8 
+  },
+  subLabel: { 
+    fontSize: 11, 
+    color: Colors.textSecondary, 
+    marginBottom: 8,
+    marginTop: 12,
+  },
+
+  input: { 
+    backgroundColor: Colors.card, 
+    borderRadius: 12, 
+    padding: 14, 
+    fontSize: 14, 
+    color: Colors.textPrimary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+
+  // Amount
+  amountContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    backgroundColor: Colors.card, 
+    borderRadius: 14, 
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  currencySymbol: { 
+    fontSize: 22, 
+    fontWeight: '600',
+    color: Colors.error, 
+    marginRight: 4 
+  },
+  amountInput: { 
+    fontSize: 28, 
+    fontWeight: '700', 
+    color: Colors.textPrimary, 
+    paddingVertical: 14,
+    minWidth: 80,
+    textAlign: 'center',
+  },
+
+  // Type Grid
+  typeGrid: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: 8 
+  },
+  typeItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.card, 
+    borderRadius: 10, 
+    paddingHorizontal: 12, 
+    paddingVertical: 10, 
+    gap: 6,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  typeItemActive: { 
+    backgroundColor: Colors.secondary, 
+    borderColor: Colors.secondary,
+  },
+  typeText: { 
+    fontSize: 12, 
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  typeTextActive: { 
+    color: '#FFFFFF' 
+  },
+
+  // Date
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dateButton: { 
+    flex: 1,
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.card, 
+    borderRadius: 12, 
+    padding: 12, 
+    gap: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dateIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dateText: { 
+    flex: 1,
+    fontSize: 14, 
+    color: Colors.textPrimary,
+    fontWeight: '500',
+  },
+  dateTextPlaceholder: { 
+    color: Colors.textMuted 
+  },
+  clearButton: { 
+    backgroundColor: Colors.card, 
+    padding: 10, 
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+
+  // Reminder Card
+  reminderCard: { 
+    backgroundColor: Colors.card, 
+    borderRadius: 14, 
+    padding: 16, 
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  reminderHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between' 
+  },
+  reminderHeaderLeft: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 12 
+  },
+  bellIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reminderTitle: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    color: Colors.textSecondary 
+  },
+  reminderSubtitle: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  reminderSettings: { 
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  reminderSummaryBox: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.goldLight, 
+    borderRadius: 10, 
+    padding: 12, 
+    gap: 8,
+  },
+  reminderSummaryText: { 
+    flex: 1,
+    fontSize: 13, 
+    color: Colors.textPrimary, 
+    fontWeight: '500' 
+  },
+  repeatingBadge: { 
+    backgroundColor: Colors.successLight, 
+    borderRadius: 6, 
+    padding: 4,
+  },
+
+  // Schedule Row
+  scheduleRow: { 
+    flexDirection: 'row', 
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  scheduleChip: { 
+    paddingHorizontal: 14, 
+    paddingVertical: 8, 
+    backgroundColor: Colors.background, 
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  scheduleChipActive: { 
+    backgroundColor: Colors.secondary,
+    borderColor: Colors.secondary,
+  },
+  scheduleText: { 
+    fontSize: 12, 
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  scheduleTextActive: { 
+    color: '#FFFFFF' 
+  },
+
+  // Days Row
+  daysRow: { 
+    flexDirection: 'row', 
+    gap: 6, 
+    flexWrap: 'wrap' 
+  },
+  dayChip: { 
+    paddingHorizontal: 10, 
+    paddingVertical: 8, 
+    backgroundColor: Colors.background, 
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dayChipActive: { 
+    backgroundColor: Colors.secondary,
+    borderColor: Colors.secondary,
+  },
+  dayText: { 
+    fontSize: 11, 
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  dayTextActive: { 
+    color: '#FFFFFF' 
+  },
+
+  // Time Button
+  timeButton: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.background, 
+    borderRadius: 10, 
+    paddingHorizontal: 14, 
+    paddingVertical: 10, 
+    gap: 8, 
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  timeText: { 
+    fontSize: 14, 
+    color: Colors.textPrimary, 
+    fontWeight: '500' 
+  },
+
+  // Save Button
+  saveButton: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    backgroundColor: Colors.secondary, 
+    borderRadius: 10, 
+    padding: 14, 
+    gap: 8, 
+    marginTop: 20 
+  },
+  saveButtonDisabled: { 
+    opacity: 0.7 
+  },
+  saveText: { 
+    fontSize: 15, 
+    fontWeight: '600', 
+    color: '#FFFFFF' 
+  },
+  saveChevron: {
+    fontSize: 16,
+    color: '#FFF',
+    marginLeft: 2,
+  },
 });

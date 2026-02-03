@@ -21,7 +21,20 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.devak_klm.expensetrackerapp",
-      "googleServicesFile": "./google-services.json"
+      "launchMode": "singleTask",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.READ_SMS",
+        "android.permission.RECEIVE_SMS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_SMS",
+        "android.permission.RECEIVE_SMS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
     },
     "web": {
       "output": "static",
@@ -49,6 +62,11 @@
         }
       ]
     ],
+    "updates": {
+      "url": "https://u.expo.dev/43ef7715-ca03-4571-bfa5-e7358108b1ea",
+      "enabled": true,
+      "fallbackToCacheTimeout": 0
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
@@ -59,6 +77,9 @@
         "projectId": "43ef7715-ca03-4571-bfa5-e7358108b1ea"
       }
     },
-    "owner": "devak_klm"
+    "owner": "devak_klm",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }
