@@ -1,7 +1,7 @@
-// API client for the expense tracker backend
-// All Supabase queries go through the Next.js backend
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.54:3000';
+// Use your computer's IP address for local development (e.g., 192.168.1.x)
+// This is required because the Android emulator cannot access 'localhost' directly
+// For production, this will use the Vercel URL
+const API_URL = 'https://test-backend-theta-one.vercel.app';
 
 // Database types
 export interface User {
@@ -107,6 +107,7 @@ export async function createCategory(category: {
   name: string;
   color?: string;
   icon?: string;
+  category_type?: 'expense' | 'income';
 }): Promise<Category> {
   const data = await apiCall<{ category: Category }>('/api/categories', {
     method: 'POST',
@@ -168,11 +169,20 @@ export async function deleteExpense(expenseId: string): Promise<void> {
 export async function getMonthlyStats(userId: string, year: number, month: number) {
   const data = await apiCall<{
     stats: {
+      // Expense stats
       totalSpent: number;
       dailyAverage: number;
       topCategory: { name: string; color: string; total: number } | null;
       categoryBreakdown: { name: string; color: string; total: number }[];
       transactionCount: number;
+      // Income stats
+      totalIncome: number;
+      topIncomeCategory: { name: string; color: string; total: number } | null;
+      incomeCategoryBreakdown: { name: string; color: string; total: number }[];
+      incomeTransactionCount: number;
+      // Net
+      netBalance: number;
+      savingsRate: number;
     };
   }>(`/api/stats?user_id=${userId}&year=${year}&month=${month}`);
   return data.stats;
@@ -339,4 +349,19 @@ export async function createUserCategory(category: {
 
 export async function deleteUserCategory(categoryId: string): Promise<void> {
   await apiCall(`/api/user-categories?id=${categoryId}`, { method: 'DELETE' });
+}
+
+// Get all months with expense data
+export interface AvailableMonth {
+  year: number;
+  month: number;
+  label: string;
+  key: string;
+}
+
+export async function getAvailableMonths(userId: string): Promise<AvailableMonth[]> {
+  const data = await apiCall<{ months: AvailableMonth[] }>(
+    `/api/stats/months?userId=${userId}`
+  );
+  return data.months;
 }

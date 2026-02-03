@@ -2,7 +2,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,8 +15,10 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { Colors, CategoryIcons, PaymentIcons } from '@/constants/Colors';
 import {
@@ -35,13 +37,55 @@ import {
 
 const CATEGORY_COLORS = ['#22C55E', '#3B82F6', '#EC4899', '#F97316', '#8B5CF6', '#14B8A6', '#EF4444', '#F59E0B'];
 
+// Skeleton Loading Component
+const SkeletonBox = ({ width, height, style }: { width: number | string; height: number; style?: any }) => {
+  const animatedValue = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(animatedValue, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(animatedValue, { toValue: 0, duration: 1000, useNativeDriver: true }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, []);
+
+  const opacity = animatedValue.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.7] });
+
+  return (
+    <Animated.View
+      style={[{ width, height, backgroundColor: Colors.border, borderRadius: 8, opacity }, style]}
+    />
+  );
+};
+
+// Loading Skeleton for the form
+const FormSkeleton = () => (
+  <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
+    <SkeletonBox width="100%" height={80} style={{ borderRadius: 14, marginBottom: 20 }} />
+    <SkeletonBox width={80} height={12} style={{ marginBottom: 8 }} />
+    <SkeletonBox width="100%" height={56} style={{ borderRadius: 12, marginBottom: 16 }} />
+    <SkeletonBox width={100} height={12} style={{ marginBottom: 8 }} />
+    <SkeletonBox width="100%" height={56} style={{ borderRadius: 12, marginBottom: 16 }} />
+    <SkeletonBox width={60} height={12} style={{ marginBottom: 8 }} />
+    <SkeletonBox width="100%" height={56} style={{ borderRadius: 12, marginBottom: 16 }} />
+    <SkeletonBox width={120} height={12} style={{ marginBottom: 8 }} />
+    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+      <SkeletonBox width={80} height={36} style={{ borderRadius: 18 }} />
+      <SkeletonBox width={80} height={36} style={{ borderRadius: 18 }} />
+      <SkeletonBox width={80} height={36} style={{ borderRadius: 18 }} />
+    </View>
+    <SkeletonBox width="100%" height={48} style={{ borderRadius: 10, marginTop: 12 }} />
+  </View>
+);
+
 export default function AddExpenseScreen() {
   const { userId } = useAuth();
   const router = useRouter();
 
-  // Transaction type toggle
   const [transactionType, setTransactionType] = useState<'expense' | 'income'>('expense');
-
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
@@ -66,11 +110,8 @@ export default function AddExpenseScreen() {
   const [newSubcategoryName, setNewSubcategoryName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, [userId]);
+  useEffect(() => { loadData(); }, [userId]);
 
-  // When transaction type changes, reset category selection
   useEffect(() => {
     const cats = transactionType === 'expense' ? expenseCategories : incomeCategories;
     if (cats.length > 0) {
@@ -85,7 +126,6 @@ export default function AddExpenseScreen() {
       const user = await getUserByClerkId(userId);
       setDbUserId(user?.id || null);
 
-      // Load expense and income categories separately
       const [expCats, incCats, payments] = await Promise.all([
         getCategories(user?.id, 'expense'),
         getCategories(user?.id, 'income'),
@@ -98,7 +138,6 @@ export default function AddExpenseScreen() {
       if (expCats.length > 0) setSelectedCategory(expCats[0]);
       if (payments.length > 0) setSelectedPayment(payments[0]);
 
-      // Load subcategories
       if (user?.id) {
         try {
           const userCats = await getUserCategories(user.id);
@@ -233,134 +272,188 @@ export default function AddExpenseScreen() {
     if (d) setDate(d);
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>
-      </SafeAreaView>
-    );
-  }
-
   const currentSubcategories = getSubcategoriesForCategory();
   const isUserCategory = selectedCategory?.user_id != null;
   const isIncome = transactionType === 'income';
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Add Transaction</Text>
-          </View>
-
-          {/* Income/Expense Toggle - Segmented Control */}
-          <View style={styles.toggleWrapper}>
-            <View style={styles.toggleTrack}>
-              <TouchableOpacity 
-                style={[
-                  styles.toggleOption, 
-                  !isIncome && styles.toggleOptionExpenseActive
-                ]}
-                onPress={() => setTransactionType('expense')}
-                activeOpacity={0.8}
-              >
-                <Feather name="minus" size={14} color={!isIncome ? '#FFF' : Colors.textSecondary} />
-                <Text style={[styles.toggleLabel, !isIncome && styles.toggleLabelActive]}>Expense</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[
-                  styles.toggleOption, 
-                  isIncome && styles.toggleOptionIncomeActive
-                ]}
-                onPress={() => setTransactionType('income')}
-                activeOpacity={0.8}
-              >
-                <Feather name="plus" size={14} color={isIncome ? '#FFF' : Colors.textSecondary} />
-                <Text style={[styles.toggleLabel, isIncome && styles.toggleLabelActive]}>Income</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Amount */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Amount</Text>
-            <View style={[styles.amountContainer, isIncome && styles.amountContainerIncome]}>
-              <Text style={[styles.currencySymbol, isIncome && styles.currencySymbolIncome]}>
-                {isIncome ? '+' : '-'} ₹
-              </Text>
-              <TextInput
-                style={[styles.amountInput, isIncome && styles.amountInputIncome]}
-                placeholder="0"
-                placeholderTextColor={Colors.textMuted}
-                value={amount}
-                onChangeText={(t) => setAmount(formatAmount(t))}
-                keyboardType="decimal-pad"
-                maxLength={12}
-              />
-            </View>
-          </View>
-
-          {/* Category */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Category</Text>
-            <TouchableOpacity style={styles.dropdown} onPress={() => setShowCategoryModal(true)}>
-              <View style={[styles.dropdownIcon, { backgroundColor: (selectedCategory?.color || '#6B7280') + '20' }]}>
-                <Feather name={isUserCategory ? 'tag' : (CategoryIcons[selectedCategory?.name || ''] as any || 'package')} size={20} color={selectedCategory?.color || '#6B7280'} />
-              </View>
-              <Text style={styles.dropdownText}>{selectedCategory?.name || 'Select Category'}</Text>
-              {isUserCategory && <View style={styles.customBadge}><Text style={styles.customBadgeText}>Custom</Text></View>}
-              <Feather name="chevron-down" size={20} color={Colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Subcategory */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Subcategory (Optional)</Text>
-            <TouchableOpacity style={styles.dropdown} onPress={() => setShowSubcategoryModal(true)}>
-              <View style={[styles.dropdownIcon, { backgroundColor: (selectedCategory?.color || '#6B7280') + '20' }]}>
-                <Feather name="layers" size={20} color={selectedCategory?.color || '#6B7280'} />
-              </View>
-              <Text style={styles.dropdownText}>{selectedSubcategory?.name || 'Select or Create'}</Text>
-              <Feather name="chevron-down" size={20} color={Colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Date */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Date</Text>
-            <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(true)}>
-              <Feather name="calendar" size={20} color={Colors.textSecondary} />
-              <Text style={styles.dateText}>{date.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</Text>
-            </TouchableOpacity>
-            {showDatePicker && <DateTimePicker value={date} mode="date" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={onDateChange} maximumDate={new Date()} themeVariant="light" />}
-          </View>
-
-          {/* Payment */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{isIncome ? 'Received Via' : 'Payment Method'}</Text>
-            <View style={styles.paymentRow}>
-              {paymentMethods.map((m) => (
-                <TouchableOpacity key={m.id} style={[styles.paymentChip, selectedPayment?.id === m.id && styles.paymentChipSelected, selectedPayment?.id === m.id && isIncome && styles.paymentChipIncome]} onPress={() => setSelectedPayment(m)}>
-                  <Feather name={PaymentIcons[m.name] as any || 'credit-card'} size={16} color={selectedPayment?.id === m.id ? '#FFF' : Colors.textSecondary} />
-                  <Text style={[styles.paymentText, selectedPayment?.id === m.id && styles.paymentTextSelected]}>{m.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Save */}
-          <TouchableOpacity 
-            style={[styles.saveBtn, saving && styles.saveBtnDisabled, isIncome && styles.saveBtnIncome]} 
-            onPress={handleSave} 
-            disabled={saving}
+        <ScrollView 
+          style={styles.scrollView} 
+          contentContainerStyle={styles.scrollContent} 
+          keyboardShouldPersistTaps="handled" 
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header with Gradient */}
+          <LinearGradient
+            colors={isIncome ? [Colors.successLight, Colors.background] : [Colors.cream, Colors.background]}
+            style={styles.headerGradient}
           >
-            {saving ? <ActivityIndicator color="#FFF" /> : (
-              <>
-                <Feather name={isIncome ? 'plus-circle' : 'minus-circle'} size={20} color="#FFF" />
-                <Text style={styles.saveBtnText}>Save {isIncome ? 'Income' : 'Expense'}</Text>
-              </>
-            )}
-          </TouchableOpacity>
+            <View style={styles.header}>
+              <Text style={styles.title}>Add Transaction</Text>
+            </View>
+
+            {/* Decorative Feature Card */}
+            <View style={styles.featureCard}>
+              <View style={styles.featureContent}>
+                <Text style={styles.featureTitle}>
+                  {isIncome ? (
+                    <><Text style={{ color: Colors.success }}>Record</Text> your income</>
+                  ) : (
+                    <><Text style={{ color: Colors.error }}>Track</Text> your spending</>
+                  )}
+                </Text>
+                <Text style={styles.featureSubtitle}>
+                  {isIncome ? 'Keep track of all earnings' : 'Monitor where your money goes'}
+                </Text>
+              </View>
+              <View style={styles.featureDecor}>
+                <View style={[styles.decorCircle1, isIncome && { backgroundColor: Colors.successLight }]} />
+                <View style={[styles.decorCircle2, isIncome && { backgroundColor: Colors.successLight }]} />
+                <View style={styles.decorIcon}>
+                  <Feather 
+                    name={isIncome ? 'trending-up' : 'trending-down'} 
+                    size={24} 
+                    color={isIncome ? Colors.success : Colors.error} 
+                  />
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
+
+          {loading ? (
+            <FormSkeleton />
+          ) : (
+            <View style={styles.form}>
+              {/* Income/Expense Toggle */}
+              <View style={styles.toggleWrapper}>
+                <View style={styles.toggleTrack}>
+                  <TouchableOpacity 
+                    style={[styles.toggleOption, !isIncome && styles.toggleOptionExpenseActive]}
+                    onPress={() => setTransactionType('expense')}
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="arrow-up-right" size={14} color={!isIncome ? '#FFF' : Colors.textSecondary} />
+                    <Text style={[styles.toggleLabel, !isIncome && styles.toggleLabelActive]}>Expense</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.toggleOption, isIncome && styles.toggleOptionIncomeActive]}
+                    onPress={() => setTransactionType('income')}
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="arrow-down-left" size={14} color={isIncome ? '#FFF' : Colors.textSecondary} />
+                    <Text style={[styles.toggleLabel, isIncome && styles.toggleLabelActive]}>Income</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Amount */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Amount</Text>
+                <View style={[styles.amountContainer, isIncome && styles.amountContainerIncome]}>
+                  <Text style={[styles.currencySymbol, isIncome && styles.currencySymbolIncome]}>
+                    {isIncome ? '+' : '-'} ₹
+                  </Text>
+                  <TextInput
+                    style={styles.amountInput}
+                    placeholder="0"
+                    placeholderTextColor={Colors.textMuted}
+                    value={amount}
+                    onChangeText={(t) => setAmount(formatAmount(t))}
+                    keyboardType="decimal-pad"
+                    maxLength={12}
+                  />
+                </View>
+              </View>
+
+              {/* Category */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Category</Text>
+                <TouchableOpacity style={styles.dropdown} onPress={() => setShowCategoryModal(true)}>
+                  <View style={[styles.dropdownIcon, { backgroundColor: (selectedCategory?.color || '#6B7280') + '20' }]}>
+                    <Feather name={isUserCategory ? 'tag' : (CategoryIcons[selectedCategory?.name || ''] as any || 'package')} size={16} color={selectedCategory?.color || '#6B7280'} />
+                  </View>
+                  <Text style={styles.dropdownText}>{selectedCategory?.name || 'Select Category'}</Text>
+                  {isUserCategory && <View style={styles.customBadge}><Text style={styles.customBadgeText}>Custom</Text></View>}
+                  <Feather name="chevron-right" size={18} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Subcategory */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Subcategory (Optional)</Text>
+                <TouchableOpacity style={styles.dropdown} onPress={() => setShowSubcategoryModal(true)}>
+                  <View style={[styles.dropdownIcon, { backgroundColor: (selectedCategory?.color || '#6B7280') + '20' }]}>
+                    <Feather name="layers" size={16} color={selectedCategory?.color || '#6B7280'} />
+                  </View>
+                  <Text style={styles.dropdownText}>{selectedSubcategory?.name || 'Select or Create'}</Text>
+                  <Feather name="chevron-right" size={18} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Date */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Date</Text>
+                <TouchableOpacity style={styles.dropdown} onPress={() => setShowDatePicker(true)}>
+                  <View style={[styles.dropdownIcon, { backgroundColor: Colors.goldLight }]}>
+                    <Feather name="calendar" size={16} color={Colors.gold} />
+                  </View>
+                  <Text style={styles.dropdownText}>
+                    {date.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                  </Text>
+                  <Feather name="chevron-right" size={18} color={Colors.textSecondary} />
+                </TouchableOpacity>
+                {showDatePicker && (
+                  <DateTimePicker 
+                    value={date} 
+                    mode="date" 
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'} 
+                    onChange={onDateChange} 
+                    maximumDate={new Date()} 
+                    themeVariant="light" 
+                  />
+                )}
+              </View>
+
+              {/* Payment Method */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>{isIncome ? 'Received Via' : 'Payment Method'}</Text>
+                <View style={styles.paymentRow}>
+                  {paymentMethods.map((m) => (
+                    <TouchableOpacity 
+                      key={m.id} 
+                      style={[
+                        styles.paymentChip, 
+                        selectedPayment?.id === m.id && styles.paymentChipSelected,
+                        selectedPayment?.id === m.id && isIncome && styles.paymentChipIncome
+                      ]} 
+                      onPress={() => setSelectedPayment(m)}
+                    >
+                      <Feather name={PaymentIcons[m.name] as any || 'credit-card'} size={14} color={selectedPayment?.id === m.id ? '#FFF' : Colors.textSecondary} />
+                      <Text style={[styles.paymentText, selectedPayment?.id === m.id && styles.paymentTextSelected]}>{m.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Save Button */}
+              <TouchableOpacity 
+                style={[styles.saveBtn, saving && styles.saveBtnDisabled]} 
+                onPress={handleSave} 
+                disabled={saving}
+                activeOpacity={0.8}
+              >
+                {saving ? <ActivityIndicator color="#FFF" /> : (
+                  <>
+                    <Feather name={isIncome ? 'plus-circle' : 'check'} size={18} color="#FFF" />
+                    <Text style={styles.saveBtnText}>Save {isIncome ? 'Income' : 'Expense'}</Text>
+                    <Text style={styles.saveBtnChevron}>»</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -369,10 +462,10 @@ export default function AddExpenseScreen() {
         <SafeAreaView style={styles.fullModal}>
           <View style={styles.fullModalHeader}>
             <TouchableOpacity onPress={() => { setShowCategoryModal(false); setShowCreateCategory(false); }}>
-              <Feather name="x" size={24} color={Colors.textPrimary} />
+              <Feather name="x" size={22} color={Colors.textPrimary} />
             </TouchableOpacity>
             <Text style={styles.fullModalTitle}>{isIncome ? 'Income' : 'Expense'} Category</Text>
-            <View style={{ width: 24 }} />
+            <View style={{ width: 22 }} />
           </View>
 
           {!showCreateCategory ? (
@@ -387,11 +480,11 @@ export default function AddExpenseScreen() {
                       onPress={() => { setSelectedCategory(cat); setSelectedSubcategory(null); setShowCategoryModal(false); }}
                     >
                       <View style={[styles.listItemIcon, { backgroundColor: cat.color + '20' }]}>
-                        <Feather name={isCustom ? 'tag' : (CategoryIcons[cat.name] as any || 'package')} size={22} color={cat.color} />
+                        <Feather name={isCustom ? 'tag' : (CategoryIcons[cat.name] as any || 'package')} size={18} color={cat.color} />
                       </View>
                       <Text style={styles.listItemText}>{cat.name}</Text>
                       {isCustom && <View style={styles.customBadge}><Text style={styles.customBadgeText}>Custom</Text></View>}
-                      {selectedCategory?.id === cat.id && <Feather name="check" size={22} color={isIncome ? Colors.success : Colors.primary} />}
+                      {selectedCategory?.id === cat.id && <Feather name="check" size={18} color={isIncome ? Colors.success : Colors.primary} />}
                     </TouchableOpacity>
                   );
                 })}
@@ -400,7 +493,7 @@ export default function AddExpenseScreen() {
 
               <View style={styles.bottomAction}>
                 <TouchableOpacity style={[styles.createNewBtn, isIncome && styles.createNewBtnIncome]} onPress={() => setShowCreateCategory(true)}>
-                  <Feather name="plus" size={20} color="#FFF" />
+                  <Feather name="plus" size={18} color="#FFF" />
                   <Text style={styles.createNewBtnText}>Create New Category</Text>
                 </TouchableOpacity>
               </View>
@@ -438,10 +531,10 @@ export default function AddExpenseScreen() {
         <SafeAreaView style={styles.fullModal}>
           <View style={styles.fullModalHeader}>
             <TouchableOpacity onPress={() => { setShowSubcategoryModal(false); setShowCreateSubcategory(false); }}>
-              <Feather name="x" size={24} color={Colors.textPrimary} />
+              <Feather name="x" size={22} color={Colors.textPrimary} />
             </TouchableOpacity>
             <Text style={styles.fullModalTitle}>Subcategory</Text>
-            <View style={{ width: 24 }} />
+            <View style={{ width: 22 }} />
           </View>
 
           {!showCreateSubcategory ? (
@@ -451,14 +544,14 @@ export default function AddExpenseScreen() {
                   style={[styles.listItem, !selectedSubcategory && styles.listItemSelected]}
                   onPress={() => { setSelectedSubcategory(null); setShowSubcategoryModal(false); }}
                 >
-                  <View style={[styles.listItemIcon, { backgroundColor: Colors.card }]}>
-                    <Feather name="minus" size={22} color={Colors.textSecondary} />
+                  <View style={[styles.listItemIcon, { backgroundColor: Colors.border }]}>
+                    <Feather name="minus" size={18} color={Colors.textSecondary} />
                   </View>
                   <Text style={styles.listItemText}>None</Text>
-                  {!selectedSubcategory && <Feather name="check" size={22} color={isIncome ? Colors.success : Colors.primary} />}
+                  {!selectedSubcategory && <Feather name="check" size={18} color={isIncome ? Colors.success : Colors.primary} />}
                 </TouchableOpacity>
 
-                {currentSubcategories.length > 0 && <Text style={[styles.sectionLabel, { marginTop: 24 }]}>Subcategories</Text>}
+                {currentSubcategories.length > 0 && <Text style={styles.sectionLabel}>Subcategories</Text>}
                 {currentSubcategories.map((sub) => (
                   <TouchableOpacity
                     key={sub.id}
@@ -467,16 +560,16 @@ export default function AddExpenseScreen() {
                     onLongPress={() => handleDeleteSubcategory(sub)}
                   >
                     <View style={[styles.listItemIcon, { backgroundColor: sub.color + '20' }]}>
-                      <Feather name="tag" size={22} color={sub.color} />
+                      <Feather name="tag" size={18} color={sub.color} />
                     </View>
                     <Text style={styles.listItemText}>{sub.name}</Text>
-                    {selectedSubcategory?.id === sub.id && <Feather name="check" size={22} color={isIncome ? Colors.success : Colors.primary} />}
+                    {selectedSubcategory?.id === sub.id && <Feather name="check" size={18} color={isIncome ? Colors.success : Colors.primary} />}
                   </TouchableOpacity>
                 ))}
 
                 {currentSubcategories.length === 0 && (
                   <View style={styles.emptyState}>
-                    <Feather name="layers" size={48} color={Colors.textMuted} />
+                    <Feather name="layers" size={40} color={Colors.textMuted} />
                     <Text style={styles.emptyStateText}>No subcategories yet</Text>
                   </View>
                 )}
@@ -486,7 +579,7 @@ export default function AddExpenseScreen() {
 
               <View style={styles.bottomAction}>
                 <TouchableOpacity style={[styles.createNewBtn, isIncome && styles.createNewBtnIncome]} onPress={() => setShowCreateSubcategory(true)}>
-                  <Feather name="plus" size={20} color="#FFF" />
+                  <Feather name="plus" size={18} color="#FFF" />
                   <Text style={styles.createNewBtnText}>Create New Subcategory</Text>
                 </TouchableOpacity>
               </View>
@@ -523,29 +616,123 @@ export default function AddExpenseScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scrollView: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 100 },
-  header: { marginBottom: 16 },
-  title: { fontSize: 28, fontWeight: 'bold', color: Colors.textPrimary },
+  container: { 
+    flex: 1, 
+    backgroundColor: Colors.background 
+  },
+  scrollView: { 
+    flex: 1 
+  },
+  scrollContent: { 
+    paddingBottom: 100 
+  },
 
-  // Toggle - Segmented Control Style
-  toggleWrapper: { marginBottom: 16, alignItems: 'center' },
+  // Header with Gradient
+  headerGradient: {
+    paddingBottom: 16,
+  },
+  header: { 
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  title: { 
+    fontSize: 22, 
+    fontWeight: '700', 
+    color: Colors.textPrimary 
+  },
+
+  // Decorative Feature Card
+  featureCard: {
+    marginHorizontal: 20,
+    borderRadius: 14,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  featureContent: {
+    flex: 1,
+  },
+  featureTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  featureSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  featureDecor: {
+    width: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  decorCircle1: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.errorLight,
+    opacity: 0.5,
+    top: -5,
+    right: -5,
+  },
+  decorCircle2: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.goldLight,
+    opacity: 0.6,
+    bottom: 0,
+    right: 15,
+  },
+  decorIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  // Form
+  form: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+
+  // Toggle
+  toggleWrapper: { 
+    marginBottom: 20, 
+    alignItems: 'center' 
+  },
   toggleTrack: { 
     flexDirection: 'row', 
     backgroundColor: Colors.card, 
-    borderRadius: 20, 
+    borderRadius: 12, 
     padding: 3,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   toggleOption: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: 17,
-    gap: 5,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    gap: 6,
   },
   toggleOptionExpenseActive: {
     backgroundColor: Colors.error,
@@ -553,79 +740,314 @@ const styles = StyleSheet.create({
   toggleOptionIncomeActive: {
     backgroundColor: Colors.success,
   },
-  toggleLabel: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  toggleLabelActive: { color: '#FFF' },
+  toggleLabel: { 
+    fontSize: 13, 
+    fontWeight: '600', 
+    color: Colors.textSecondary 
+  },
+  toggleLabelActive: { 
+    color: '#FFF' 
+  },
 
-  // Keep old toggle styles for backward compatibility
-  toggleContainer: { flexDirection: 'row', backgroundColor: Colors.card, borderRadius: 16, padding: 4, marginBottom: 20, gap: 4 },
-  toggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, gap: 8 },
-  toggleBtnActive: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
-  toggleBtnExpense: { backgroundColor: Colors.error },
-  toggleBtnIncome: { backgroundColor: Colors.success },
-  toggleText: { fontSize: 16, fontWeight: '600', color: Colors.textSecondary },
-  toggleTextActive: { color: '#FFF' },
-
-  section: { marginBottom: 16 },
-  sectionTitle: { fontSize: 11, fontWeight: '600', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  section: { 
+    marginBottom: 16 
+  },
+  sectionTitle: { 
+    fontSize: 11, 
+    fontWeight: '600', 
+    color: Colors.textMuted, 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.5, 
+    marginBottom: 8 
+  },
   
-  // Amount - Compact
-  amountContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, backgroundColor: Colors.card, borderRadius: 14, borderWidth: 1.5, borderColor: Colors.error + '25' },
-  amountContainerIncome: { borderColor: Colors.success + '25' },
-  currencySymbol: { fontSize: 24, fontWeight: '600', color: Colors.error, marginRight: 2 },
-  currencySymbolIncome: { color: Colors.success },
-  amountInput: { fontSize: 36, fontWeight: 'bold', color: Colors.textPrimary, minWidth: 60, textAlign: 'center' },
-  amountInputIncome: { },
+  // Amount
+  amountContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    paddingVertical: 16, 
+    backgroundColor: Colors.card, 
+    borderRadius: 14, 
+    borderWidth: 1, 
+    borderColor: Colors.border,
+  },
+  amountContainerIncome: { 
+    borderColor: Colors.success + '40' 
+  },
+  currencySymbol: { 
+    fontSize: 22, 
+    fontWeight: '600', 
+    color: Colors.error, 
+    marginRight: 2 
+  },
+  currencySymbolIncome: { 
+    color: Colors.success 
+  },
+  amountInput: { 
+    fontSize: 32, 
+    fontWeight: '700', 
+    color: Colors.textPrimary, 
+    minWidth: 60, 
+    textAlign: 'center' 
+  },
 
-  dropdown: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: 12, padding: 12 },
-  dropdownIcon: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-  dropdownText: { flex: 1, fontSize: 15, color: Colors.textPrimary },
-  customBadge: { backgroundColor: Colors.primary + '15', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, marginRight: 6 },
-  customBadgeText: { fontSize: 10, fontWeight: '600', color: Colors.primary },
+  // Dropdown
+  dropdown: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.card, 
+    borderRadius: 12, 
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dropdownIcon: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: 10, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginRight: 10 
+  },
+  dropdownText: { 
+    flex: 1, 
+    fontSize: 14, 
+    color: Colors.textPrimary,
+    fontWeight: '500',
+  },
+  customBadge: { 
+    backgroundColor: Colors.primary + '15', 
+    paddingHorizontal: 6, 
+    paddingVertical: 3, 
+    borderRadius: 6, 
+    marginRight: 6 
+  },
+  customBadgeText: { 
+    fontSize: 10, 
+    fontWeight: '600', 
+    color: Colors.primary 
+  },
 
-  dateBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: 12, padding: 12, gap: 10 },
-  dateText: { fontSize: 15, color: Colors.textPrimary },
+  // Payment
+  paymentRow: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: 8 
+  },
+  paymentChip: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.card, 
+    borderRadius: 10, 
+    paddingHorizontal: 12, 
+    paddingVertical: 8, 
+    gap: 6, 
+    borderWidth: 1, 
+    borderColor: Colors.border 
+  },
+  paymentChipSelected: { 
+    backgroundColor: Colors.secondary, 
+    borderColor: Colors.secondary 
+  },
+  paymentChipIncome: { 
+    backgroundColor: Colors.success, 
+    borderColor: Colors.success 
+  },
+  paymentText: { 
+    fontSize: 12, 
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  paymentTextSelected: { 
+    color: '#FFF' 
+  },
 
-  paymentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  paymentChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8, gap: 6, borderWidth: 1, borderColor: Colors.border },
-  paymentChipSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  paymentChipIncome: { backgroundColor: Colors.success, borderColor: Colors.success },
-  paymentText: { fontSize: 13, color: Colors.textSecondary },
-  paymentTextSelected: { color: '#FFF', fontWeight: '500' },
-
-  noteInput: { backgroundColor: Colors.card, borderRadius: 12, padding: 12, fontSize: 15, color: Colors.textPrimary, minHeight: 60, textAlignVertical: 'top' },
-
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.error, borderRadius: 14, padding: 14, gap: 6, marginTop: 12 },
-  saveBtnIncome: { backgroundColor: Colors.success },
-  saveBtnDisabled: { opacity: 0.7 },
-  saveBtnText: { fontSize: 15, fontWeight: '600', color: '#FFF' },
+  // Save Button
+  saveBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    backgroundColor: Colors.secondary, 
+    borderRadius: 10, 
+    padding: 14, 
+    gap: 8, 
+    marginTop: 20 
+  },
+  saveBtnDisabled: { 
+    opacity: 0.7 
+  },
+  saveBtnText: { 
+    fontSize: 15, 
+    fontWeight: '600', 
+    color: '#FFF' 
+  },
+  saveBtnChevron: {
+    fontSize: 16,
+    color: '#FFF',
+    marginLeft: 2,
+  },
 
   // Full Screen Modal
-  fullModal: { flex: 1, backgroundColor: Colors.background },
-  fullModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  fullModalTitle: { fontSize: 18, fontWeight: '600', color: Colors.textPrimary },
-  fullModalScroll: { flex: 1, padding: 20 },
-  sectionLabel: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary, textTransform: 'uppercase', marginBottom: 12 },
-  listItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: 14, padding: 16, marginBottom: 10 },
-  listItemSelected: { backgroundColor: Colors.primary + '15', borderWidth: 2, borderColor: Colors.primary },
-  listItemIcon: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
-  listItemText: { flex: 1, fontSize: 17, fontWeight: '500', color: Colors.textPrimary },
-  bottomAction: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: Colors.background, borderTopWidth: 1, borderTopColor: Colors.border },
-  createNewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary, borderRadius: 14, padding: 16, gap: 10 },
-  createNewBtnIncome: { backgroundColor: Colors.success },
-  createNewBtnText: { fontSize: 16, fontWeight: '600', color: '#FFF' },
-  emptyState: { alignItems: 'center', paddingVertical: 48 },
-  emptyStateText: { fontSize: 18, fontWeight: '600', color: Colors.textSecondary, marginTop: 16 },
-  deleteHint: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 16 },
+  fullModal: { 
+    flex: 1, 
+    backgroundColor: Colors.background 
+  },
+  fullModalHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    padding: 20, 
+    borderBottomWidth: 1, 
+    borderBottomColor: Colors.border 
+  },
+  fullModalTitle: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    color: Colors.textPrimary 
+  },
+  fullModalScroll: { 
+    flex: 1, 
+    padding: 20 
+  },
+  sectionLabel: { 
+    fontSize: 11, 
+    fontWeight: '600', 
+    color: Colors.textSecondary, 
+    textTransform: 'uppercase', 
+    marginBottom: 12,
+    marginTop: 20,
+  },
+  listItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: Colors.card, 
+    borderRadius: 12, 
+    padding: 14, 
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  listItemSelected: { 
+    backgroundColor: Colors.primary + '10', 
+    borderColor: Colors.primary 
+  },
+  listItemIcon: { 
+    width: 38, 
+    height: 38, 
+    borderRadius: 10, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginRight: 12 
+  },
+  listItemText: { 
+    flex: 1, 
+    fontSize: 14, 
+    fontWeight: '500', 
+    color: Colors.textPrimary 
+  },
+  bottomAction: { 
+    position: 'absolute', 
+    bottom: 0, 
+    left: 0, 
+    right: 0, 
+    padding: 20, 
+    backgroundColor: Colors.background, 
+    borderTopWidth: 1, 
+    borderTopColor: Colors.border 
+  },
+  createNewBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    backgroundColor: Colors.secondary, 
+    borderRadius: 10, 
+    padding: 14, 
+    gap: 8 
+  },
+  createNewBtnIncome: { 
+    backgroundColor: Colors.success 
+  },
+  createNewBtnText: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    color: '#FFF' 
+  },
+  emptyState: { 
+    alignItems: 'center', 
+    paddingVertical: 40 
+  },
+  emptyStateText: { 
+    fontSize: 14, 
+    fontWeight: '500', 
+    color: Colors.textSecondary, 
+    marginTop: 12 
+  },
+  deleteHint: { 
+    fontSize: 11, 
+    color: Colors.textMuted, 
+    textAlign: 'center', 
+    marginTop: 12 
+  },
 
   // Create Form
-  createForm: { flex: 1, padding: 20, justifyContent: 'center' },
-  createFormTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.textPrimary, marginBottom: 24, textAlign: 'center' },
-  createFormInput: { backgroundColor: Colors.card, borderRadius: 14, padding: 18, fontSize: 18, color: Colors.textPrimary, textAlign: 'center' },
-  createFormActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
-  cancelBtn: { flex: 1, padding: 16, borderRadius: 14, backgroundColor: Colors.card, alignItems: 'center' },
-  cancelBtnText: { fontSize: 16, fontWeight: '600', color: Colors.textSecondary },
-  confirmBtn: { flex: 1, padding: 16, borderRadius: 14, backgroundColor: Colors.primary, alignItems: 'center' },
-  confirmBtnIncome: { backgroundColor: Colors.success },
-  confirmBtnDisabled: { opacity: 0.5 },
-  confirmBtnText: { fontSize: 16, fontWeight: '600', color: '#FFF' },
+  createForm: { 
+    flex: 1, 
+    padding: 20, 
+    justifyContent: 'center' 
+  },
+  createFormTitle: { 
+    fontSize: 18, 
+    fontWeight: '700', 
+    color: Colors.textPrimary, 
+    marginBottom: 20, 
+    textAlign: 'center' 
+  },
+  createFormInput: { 
+    backgroundColor: Colors.card, 
+    borderRadius: 12, 
+    padding: 16, 
+    fontSize: 16, 
+    color: Colors.textPrimary, 
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  createFormActions: { 
+    flexDirection: 'row', 
+    gap: 12, 
+    marginTop: 20 
+  },
+  cancelBtn: { 
+    flex: 1, 
+    padding: 14, 
+    borderRadius: 10, 
+    backgroundColor: Colors.card, 
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  cancelBtnText: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    color: Colors.textSecondary 
+  },
+  confirmBtn: { 
+    flex: 1, 
+    padding: 14, 
+    borderRadius: 10, 
+    backgroundColor: Colors.secondary, 
+    alignItems: 'center' 
+  },
+  confirmBtnIncome: { 
+    backgroundColor: Colors.success 
+  },
+  confirmBtnDisabled: { 
+    opacity: 0.5 
+  },
+  confirmBtnText: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    color: '#FFF' 
+  },
 });

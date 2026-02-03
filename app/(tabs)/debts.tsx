@@ -1,7 +1,7 @@
 import { useAuth } from '@clerk/clerk-expo';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,13 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { Colors } from '@/constants/Colors';
-import { getDebts, deleteDebt, markDebtAsPaid, getUserByClerkId, Debt, skipNextReminder } from '@/lib/supabase';
+import { getDebts, deleteDebt, markDebtAsPaid, getUserByClerkId, Debt, skipNextReminder, getExpenses } from '@/lib/supabase';
 
 const DEBT_TYPE_ICONS: Record<string, string> = {
   rent: 'home',
@@ -32,6 +34,51 @@ const DEBT_TYPE_COLORS: Record<string, string> = {
   other: '#6B7280',
 };
 
+// Skeleton Component
+const SkeletonBox = ({ width, height, style }: { width: number | string; height: number; style?: any }) => {
+  const animatedValue = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(animatedValue, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(animatedValue, { toValue: 0, duration: 1000, useNativeDriver: true }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, []);
+
+  const opacity = animatedValue.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.7] });
+
+  return (
+    <Animated.View
+      style={[{ width, height, backgroundColor: Colors.border, borderRadius: 8, opacity }, style]}
+    />
+  );
+};
+
+// Loading Skeleton
+const ListSkeleton = () => (
+  <View style={{ paddingHorizontal: 20 }}>
+    {[1, 2, 3].map(i => (
+      <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, backgroundColor: Colors.card, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.border }}>
+        <SkeletonBox width={40} height={40} style={{ borderRadius: 10, marginRight: 12 }} />
+        <View style={{ flex: 1 }}>
+          <SkeletonBox width={120} height={14} style={{ marginBottom: 6 }} />
+          <SkeletonBox width={80} height={10} />
+        </View>
+        <SkeletonBox width={60} height={16} />
+      </View>
+    ))}
+  </View>
+);
+
+import { useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
+
+// ... (existing imports)
+
 export default function DebtsScreen() {
   const { userId } = useAuth();
   const router = useRouter();
@@ -41,14 +88,24 @@ export default function DebtsScreen() {
   const [activeTab, setActiveTab] = useState<'owed' | 'receivable'>('owed');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [settlementStats, setSettlementStats] = useState<{
+    currentBalance: number;
+    totalPayable: number;
+    totalReceivable: number;
+    netSettlement: number;
+    projectedBalance: number;
+  } | null>(null);
 
-  useEffect(() => {
-    initUser();
-  }, [userId]);
-
-  useEffect(() => {
-    if (dbUserId) loadDebts();
-  }, [dbUserId, activeTab]);
+  useEffect(() => { initUser(); }, [userId]);
+  
+  // Auto-refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (dbUserId) {
+        loadDebts();
+      }
+    }, [dbUserId])
+  );
 
   const initUser = async () => {
     if (!userId) return;
@@ -63,26 +120,58 @@ export default function DebtsScreen() {
   const loadDebts = async () => {
     if (!dbUserId) return;
     try {
-      const data = await getDebts(dbUserId, { direction: activeTab, isPaid: false });
-      // Sort debts: reminders first (by next reminder time), then by due date
-      const sortedData = [...data].sort((a, b) => {
+      // Keep loading silent if not initial load to avoid flicker on focus
+      if (debts.length === 0) setLoading(true);
+      
+      const [allDebts, allExpenses] = await Promise.all([
+        getDebts(dbUserId, { isPaid: false }),
+        getExpenses(dbUserId)
+      ]);
+
+      // Calculate Current Balance
+      const totalIncome = allExpenses
+        .filter(e => e.type === 'income')
+        .reduce((sum, e) => sum + e.amount, 0);
+      const totalExpenses = allExpenses
+        .filter(e => e.type === 'expense' || !e.type)
+        .reduce((sum, e) => sum + e.amount, 0);
+      const currentBalance = totalIncome - totalExpenses;
+
+      // Calculate Settlement Stats
+      const totalPayable = allDebts
+        .filter(d => d.direction === 'owed')
+        .reduce((sum, d) => sum + Number(d.amount), 0);
+      
+      const totalReceivable = allDebts
+        .filter(d => d.direction === 'receivable')
+        .reduce((sum, d) => sum + Number(d.amount), 0);
+
+      const netSettlement = totalReceivable - totalPayable;
+      const projectedBalance = currentBalance + netSettlement;
+
+      setSettlementStats({
+        currentBalance,
+        totalPayable,
+        totalReceivable,
+        netSettlement,
+        projectedBalance
+      });
+
+      const sortedData = [...allDebts].sort((a, b) => {
         const aNextReminder = a.reminder_enabled ? getNextReminderDate(a) : null;
         const bNextReminder = b.reminder_enabled ? getNextReminderDate(b) : null;
         
-        // Both have reminders - sort by next reminder time
         if (aNextReminder && bNextReminder) {
           return aNextReminder.getTime() - bNextReminder.getTime();
         }
-        // Only a has reminder - a comes first
         if (aNextReminder && !bNextReminder) return -1;
-        // Only b has reminder - b comes first
         if (!aNextReminder && bNextReminder) return 1;
-        // Neither has reminder - sort by due date
         if (a.due_date && b.due_date) {
           return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
         }
         return 0;
       });
+      
       setDebts(sortedData);
     } catch (error) {
       console.error('Error loading debts:', error);
@@ -107,62 +196,57 @@ export default function DebtsScreen() {
     const today = new Date();
     const diffDays = Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     
-    if (diffDays < 0) return `${Math.abs(diffDays)} days overdue`;
+    if (diffDays < 0) return `${Math.abs(diffDays)}d overdue`;
     if (diffDays === 0) return 'Due today';
-    if (diffDays === 1) return 'Due tomorrow';
-    if (diffDays <= 7) return `Due in ${diffDays} days`;
+    if (diffDays === 1) return 'Tomorrow';
+    if (diffDays <= 7) return `In ${diffDays}d`;
     return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   };
 
   const handleMarkPaid = (debt: Debt) => {
-    Alert.alert(
-      'Mark as Paid',
-      `Mark "${debt.name}" as paid?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Mark Paid',
-          onPress: async () => {
-            try {
-              await markDebtAsPaid(debt.id);
-              loadDebts();
-            } catch (error) {
-              Alert.alert('Error', 'Failed to update');
-            }
-          },
+    Alert.alert('Mark as Paid', `Mark "${debt.name}" as paid?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Mark Paid',
+        onPress: async () => {
+          try {
+            await markDebtAsPaid(debt.id);
+            loadDebts();
+          } catch (error) {
+            Alert.alert('Error', 'Failed to update');
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const handleDelete = (debt: Debt) => {
-    Alert.alert(
-      'Delete',
-      `Delete "${debt.name}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteDebt(debt.id);
-              loadDebts();
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete');
-            }
-          },
+    Alert.alert('Delete', `Delete "${debt.name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteDebt(debt.id);
+            loadDebts();
+          } catch (error) {
+            Alert.alert('Error', 'Failed to delete');
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
-
-  const totalAmount = debts.reduce((sum, d) => sum + Number(d.amount), 0);
+  
+  // Filter debts based on active tab
+  const filteredDebts = debts.filter(d => d.direction === activeTab);
+  
+  // Calculate total for the ACTIVE tab specifically
+  const totalAmount = filteredDebts.reduce((sum, d) => sum + Number(d.amount), 0);
 
   const getReminderText = (debt: Debt) => {
     if (!debt.reminder_enabled || !debt.reminder_schedule) return null;
     
-    // Format time (e.g., "10:35")
     const timeParts = debt.reminder_time.split(':');
     const timeDate = new Date();
     timeDate.setHours(parseInt(timeParts[0]), parseInt(timeParts[1]));
@@ -175,17 +259,17 @@ export default function DebtsScreen() {
         break;
       case 'weekly':
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        scheduleStr = `Weekly on ${days[debt.reminder_day_of_week || 0]}`;
+        scheduleStr = `${days[debt.reminder_day_of_week || 0]}`;
         break;
       case 'monthly':
-        scheduleStr = `Monthly on day ${debt.reminder_day_of_month}`;
+        scheduleStr = `${debt.reminder_day_of_month}th`;
         break;
       case 'once':
-        scheduleStr = 'One-time';
+        scheduleStr = 'Once';
         break;
     }
 
-    return `${scheduleStr} at ${timeStr}`;
+    return `${scheduleStr} · ${timeStr}`;
   };
 
   const getNextReminderDate = (debt: Debt): Date | null => {
@@ -224,33 +308,29 @@ export default function DebtsScreen() {
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 60) return `in ${diffMins}m`;
-    if (diffHours < 24) return `in ${diffHours}h`;
+    if (diffMins < 60) return `${diffMins}m`;
+    if (diffHours < 24) return `${diffHours}h`;
     if (diffDays === 1) return 'Tomorrow';
-    if (diffDays < 7) return `in ${diffDays} days`;
+    if (diffDays < 7) return `${diffDays}d`;
     return nextDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   };
 
   const handleSkipReminder = (debt: Debt) => {
-    Alert.alert(
-      'Skip Reminder',
-      `Skip the next reminder for "${debt.name}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Skip',
-          onPress: async () => {
-            try {
-              await skipNextReminder(debt.id);
-              loadDebts();
-              Alert.alert('Done', 'Next reminder skipped');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to skip reminder');
-            }
-          },
+    Alert.alert('Skip Reminder', `Skip the next reminder for "${debt.name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Skip',
+        onPress: async () => {
+          try {
+            await skipNextReminder(debt.id);
+            loadDebts();
+            Alert.alert('Done', 'Next reminder skipped');
+          } catch (error) {
+            Alert.alert('Error', 'Failed to skip reminder');
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const renderDebt = ({ item }: { item: Debt }) => {
@@ -263,13 +343,14 @@ export default function DebtsScreen() {
       <TouchableOpacity
         style={styles.debtCard}
         onLongPress={() => handleDelete(item)}
+        activeOpacity={0.7}
       >
-        <View style={[styles.debtIcon, { backgroundColor: color + '20' }]}>
-          <Feather name={icon as any} size={20} color={color} />
+        <View style={[styles.debtIcon, { backgroundColor: color + '15' }]}>
+          <Feather name={icon as any} size={16} color={color} />
         </View>
         
         <View style={styles.debtInfo}>
-          <Text style={styles.debtName}>{item.name}</Text>
+          <Text style={styles.debtName} numberOfLines={1}>{item.name}</Text>
           <View style={styles.debtMeta}>
             <Text style={[styles.dueDate, isOverdue && styles.overdue]}>
               {formatDueDate(item.due_date)}
@@ -282,11 +363,11 @@ export default function DebtsScreen() {
           </View>
           {item.reminder_enabled && (
             <View style={styles.reminderRow}>
-              <Feather name="bell" size={12} color={Colors.primary} />
+              <Feather name="bell" size={10} color={Colors.gold} />
               <Text style={styles.reminderText}>{getReminderText(item)}</Text>
               {nextReminderIn && (
                 <View style={styles.nextReminderBadge}>
-                  <Text style={styles.nextReminderText}>Next {nextReminderIn}</Text>
+                  <Text style={styles.nextReminderText}>{nextReminderIn}</Text>
                 </View>
               )}
             </View>
@@ -294,21 +375,23 @@ export default function DebtsScreen() {
         </View>
 
         <View style={styles.debtRight}>
-          <Text style={styles.debtAmount}>{formatCurrency(item.amount)}</Text>
+          <Text style={[styles.debtAmount, activeTab === 'receivable' && { color: Colors.success }]}>
+            {formatCurrency(item.amount)}
+          </Text>
           <View style={styles.actionButtons}>
             {item.reminder_enabled && (
               <TouchableOpacity
                 style={styles.skipButton}
                 onPress={() => handleSkipReminder(item)}
               >
-                <Feather name="fast-forward" size={14} color={Colors.warning} />
+                <Feather name="fast-forward" size={12} color={Colors.gold} />
               </TouchableOpacity>
             )}
             <TouchableOpacity
               style={styles.paidButton}
               onPress={() => handleMarkPaid(item)}
             >
-              <Feather name="check" size={16} color={Colors.success} />
+              <Feather name="check" size={14} color={Colors.success} />
             </TouchableOpacity>
           </View>
         </View>
@@ -317,67 +400,132 @@ export default function DebtsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Debts & Bills</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => router.push({ pathname: '/add-debt', params: { initialDirection: activeTab } })}
-        >
-          <Feather name="plus" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header with Gradient */}
+      <LinearGradient
+        colors={[Colors.goldLight, Colors.background]}
+        style={styles.headerGradient}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Debts & Bills</Text>
+        </View>
+
+        {/* Decorative Feature Card */}
+        <View style={styles.featureCard}>
+          <View style={styles.featureContent}>
+            <Text style={styles.featureTitle}>
+              <Text style={{ color: Colors.gold }}>Manage</Text> your payments
+            </Text>
+            <Text style={styles.featureSubtitle}>Track debts, bills & reminders</Text>
+          </View>
+          <View style={styles.featureDecor}>
+            <View style={styles.decorCircle1} />
+            <View style={styles.decorCircle2} />
+            <View style={styles.decorIcon}>
+              <Feather name="clock" size={20} color={Colors.gold} />
+            </View>
+          </View>
+        </View>
+      </LinearGradient>
 
       {/* Tabs */}
       <View style={styles.tabs}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'owed' && styles.tabActive]}
+          style={[styles.tab, activeTab === 'owed' && styles.tabActiveOwed]}
           onPress={() => setActiveTab('owed')}
         >
+          <Feather name="arrow-up-right" size={14} color={activeTab === 'owed' ? '#FFF' : Colors.textSecondary} />
           <Text style={[styles.tabText, activeTab === 'owed' && styles.tabTextActive]}>
             I Owe
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'receivable' && styles.tabActive]}
+          style={[styles.tab, activeTab === 'receivable' && styles.tabActiveReceivable]}
           onPress={() => setActiveTab('receivable')}
         >
+          <Feather name="arrow-down-left" size={14} color={activeTab === 'receivable' ? '#FFF' : Colors.textSecondary} />
           <Text style={[styles.tabText, activeTab === 'receivable' && styles.tabTextActive]}>
             Owed to Me
           </Text>
         </TouchableOpacity>
       </View>
 
+      {/* Settlement Balance Card */}
+      {settlementStats && (
+        <View style={styles.settlementCard}>
+           <Text style={styles.settlementLabel}>Balance after Settlement</Text>
+           <View style={styles.settlementRow}>
+             <Text style={styles.settlementAmount}>{formatCurrency(settlementStats.projectedBalance)}</Text>
+             <View style={[
+               styles.settlementBadge, 
+               settlementStats.netSettlement >= 0 ? styles.badgePositive : styles.badgeNegative
+             ]}>
+               <Feather 
+                 name={settlementStats.netSettlement >= 0 ? "arrow-up" : "arrow-down"} 
+                 size={12} 
+                 color={settlementStats.netSettlement >= 0 ? Colors.success : Colors.error} 
+               />
+               <Text style={[
+                 styles.settlementBadgeText,
+                 { color: settlementStats.netSettlement >= 0 ? Colors.success : Colors.error }
+               ]}>
+                 {formatCurrency(Math.abs(settlementStats.netSettlement))}
+               </Text>
+             </View>
+           </View>
+           <Text style={styles.settlementSubtext}>
+             Current: {formatCurrency(settlementStats.currentBalance)}
+           </Text>
+        </View>
+      )}
+
       {/* Total Card */}
       <View style={[styles.totalCard, activeTab === 'owed' ? styles.owedCard : styles.receivableCard]}>
-        <Text style={styles.totalLabel}>
-          {activeTab === 'owed' ? 'Total to Pay' : 'Total to Receive'}
-        </Text>
-        <Text style={styles.totalAmount}>{formatCurrency(totalAmount)}</Text>
-        <Text style={styles.debtCount}>{debts.length} items</Text>
+        <View style={styles.totalLeft}>
+          <Text style={styles.totalLabel}>
+            {activeTab === 'owed' ? 'Total to Pay' : 'Total to Receive'}
+          </Text>
+          <Text style={[styles.totalAmount, activeTab === 'receivable' && { color: Colors.success }]}>
+            {formatCurrency(totalAmount)}
+          </Text>
+        </View>
+        <View style={styles.totalRight}>
+          <View style={[styles.countBadge, activeTab === 'receivable' && { backgroundColor: Colors.successLight }]}>
+            <Text style={[styles.countText, activeTab === 'receivable' && { color: Colors.success }]}>
+              {filteredDebts.length} items
+            </Text>
+          </View>
+        </View>
       </View>
 
       {/* List */}
       <View style={{ flex: 1 }}>
-        {loading ? (
+        {(loading) ? (
+          <ListSkeleton />
+        ) : filteredDebts.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Loading...</Text>
-          </View>
-        ) : debts.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Feather name="check-circle" size={64} color={Colors.success} />
+            <View style={styles.emptyIcon}>
+              <Feather name="check-circle" size={40} color={Colors.success} />
+            </View>
             <Text style={styles.emptyText}>All clear!</Text>
             <Text style={styles.emptySubtext}>
               {activeTab === 'owed' ? "You don't owe anything" : 'No one owes you'}
             </Text>
+            <TouchableOpacity 
+              style={styles.emptyButton}
+              onPress={() => router.push({ pathname: '/add-debt', params: { initialDirection: activeTab } })}
+            >
+              <Feather name="plus" size={16} color="#FFF" />
+              <Text style={styles.emptyButtonText}>Add New</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <FlatList
-            data={debts}
+            data={filteredDebts}
             renderItem={renderDebt}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
             }
@@ -385,13 +533,13 @@ export default function DebtsScreen() {
         )}
       </View>
 
-      {/* FAB */}
+      {/* Single FAB */}
       <TouchableOpacity 
         style={styles.fab} 
         onPress={() => router.push({ pathname: '/add-debt', params: { initialDirection: activeTab } })}
         activeOpacity={0.8}
       >
-        <Feather name="plus" size={24} color="#FFFFFF" />
+        <Feather name="plus" size={22} color="#FFFFFF" />
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -402,80 +550,164 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
+
+  // Header with Gradient
+  headerGradient: {
     paddingBottom: 16,
   },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '700',
     color: Colors.textPrimary,
   },
-  addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primary,
+
+  // Decorative Feature Card
+  featureCard: {
+    marginHorizontal: 20,
+    borderRadius: 14,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  featureContent: {
+    flex: 1,
+  },
+  featureTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  featureSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  featureDecor: {
+    width: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  decorCircle1: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.goldLight,
+    opacity: 0.5,
+    top: -5,
+    right: -5,
+  },
+  decorCircle2: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.errorLight,
+    opacity: 0.5,
+    bottom: 0,
+    right: 15,
+  },
+  decorIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.card,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
+
+  // Tabs
   tabs: {
     flexDirection: 'row',
     marginHorizontal: 20,
-    marginVertical: 16,
+    marginVertical: 12,
     backgroundColor: Colors.card,
     borderRadius: 12,
-    padding: 4,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   tab: {
     flex: 1,
-    paddingVertical: 12,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
     borderRadius: 10,
+    gap: 6,
   },
-  tabActive: {
-    backgroundColor: Colors.primary,
+  tabActiveOwed: {
+    backgroundColor: Colors.error,
+  },
+  tabActiveReceivable: {
+    backgroundColor: Colors.success,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: Colors.textSecondary,
   },
   tabTextActive: {
     color: '#FFFFFF',
   },
+
+  // Total Card
   totalCard: {
     marginHorizontal: 20,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   owedCard: {
-    backgroundColor: Colors.error + '20',
+    backgroundColor: Colors.errorLight,
   },
   receivableCard: {
-    backgroundColor: Colors.success + '20',
+    backgroundColor: Colors.successLight,
   },
+  totalLeft: {},
   totalLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: Colors.textSecondary,
   },
   totalAmount: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-    marginTop: 4,
+    fontSize: 26,
+    fontWeight: '700',
+    color: Colors.error,
+    marginTop: 2,
   },
-  debtCount: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 8,
+  totalRight: {},
+  countBadge: {
+    backgroundColor: Colors.error + '20',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
+  countText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.error,
+  },
+
+  // List
   listContent: {
     paddingHorizontal: 20,
     paddingBottom: 100,
@@ -485,13 +717,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: Colors.card,
     borderRadius: 12,
-    padding: 16,
+    padding: 14,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   debtIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -500,110 +734,186 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   debtName: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
     color: Colors.textPrimary,
   },
   debtMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
-    gap: 8,
+    marginTop: 3,
+    gap: 6,
   },
   dueDate: {
-    fontSize: 13,
+    fontSize: 11,
     color: Colors.textSecondary,
   },
   overdue: {
     color: Colors.error,
-  },
-  reminderBadge: {
-    backgroundColor: Colors.primary + '20',
-    padding: 4,
-    borderRadius: 4,
+    fontWeight: '600',
   },
   recurringBadge: {
-    backgroundColor: Colors.success + '20',
-    padding: 4,
+    backgroundColor: Colors.successLight,
+    padding: 3,
     borderRadius: 4,
   },
   debtRight: {
     alignItems: 'flex-end',
-    gap: 8,
+    gap: 6,
   },
   debtAmount: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  paidButton: {
-    backgroundColor: Colors.success + '20',
-    padding: 8,
-    borderRadius: 8,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingBottom: 100,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginTop: 16,
-  },
-  emptySubtext: {
     fontSize: 14,
-    color: Colors.textSecondary,
-    marginTop: 8,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  reminderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 4,
-    flexWrap: 'wrap',
-  },
-  reminderText: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  nextReminderBadge: {
-    backgroundColor: Colors.primary + '20',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginLeft: 4,
-  },
-  nextReminderText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.primary,
+    fontWeight: '700',
+    color: Colors.error,
   },
   actionButtons: {
     flexDirection: 'row',
     gap: 6,
   },
+  paidButton: {
+    backgroundColor: Colors.successLight,
+    padding: 6,
+    borderRadius: 6,
+  },
   skipButton: {
-    backgroundColor: Colors.warning + '20',
-    padding: 8,
+    backgroundColor: Colors.goldLight,
+    padding: 6,
+    borderRadius: 6,
+  },
+
+  // Reminder
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  reminderText: {
+    fontSize: 10,
+    color: Colors.textSecondary,
+  },
+  nextReminderBadge: {
+    backgroundColor: Colors.goldLight,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 2,
+  },
+  nextReminderText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: Colors.gold,
+  },
+
+  // Empty State
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 100,
+    paddingHorizontal: 40,
+  },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.successLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  emptySubtext: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  emptyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.secondary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 20,
+    gap: 8,
+  },
+  emptyButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+
+  // Settlement Card
+  settlementCard: {
+    marginHorizontal: 20,
+    marginTop: 0,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: Colors.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  settlementLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  settlementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+  settlementAmount: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  settlementBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 8,
+    gap: 4,
+  },
+  badgePositive: {
+    backgroundColor: Colors.successLight,
+  },
+  badgeNegative: {
+    backgroundColor: Colors.errorLight,
+  },
+  settlementBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  settlementSubtext: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: Colors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
   },
 });

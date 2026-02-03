@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { Colors } from '@/constants/Colors';
 
 // This route handles the OAuth callback redirect
 // After Clerk processes the OAuth, redirect back to sign-in
@@ -20,7 +21,7 @@ export default function OAuthCallback() {
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color="#7C3AED" />
+      <ActivityIndicator size="large" color={Colors.primary} />
       <Text style={styles.text}>Completing sign in...</Text>
     </View>
   );
@@ -31,10 +32,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0D0D0D',
+    backgroundColor: Colors.background,
   },
   text: {
-    color: '#9CA3AF',
+    color: Colors.textSecondary,
     marginTop: 16,
     fontSize: 14,
   },
