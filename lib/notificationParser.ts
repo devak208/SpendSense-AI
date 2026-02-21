@@ -3,7 +3,7 @@
 
 import { ParsedTransaction } from './bankSmsParser';
 
-// UPI App Package Names
+// UPI App Package Names for testing
 export const UPI_APP_PACKAGES: { [key: string]: string } = {
   'com.google.android.apps.nbu.paisa.user': 'Google Pay',
   'com.phonepe.app': 'PhonePe',
