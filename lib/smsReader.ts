@@ -62,7 +62,7 @@ async function loadSmsModule() {
     logSMS('SMS reading is only available on Android');
     return null;
   }
-  
+
   try {
     // logSMS('Loading SMS module...');
     const module = await import('@maniac-tech/react-native-expo-read-sms');
@@ -98,7 +98,7 @@ export async function checkSMSPermission(): Promise<{
   isSupported: boolean;
 }> {
   logSMS('Checking SMS permissions...');
-  
+
   if (Platform.OS !== 'android') {
     return {
       hasReceiveSmsPermission: false,
@@ -106,7 +106,7 @@ export async function checkSMSPermission(): Promise<{
       isSupported: false,
     };
   }
-  
+
   const module = await loadSmsModule();
   if (!module) {
     return {
@@ -115,7 +115,7 @@ export async function checkSMSPermission(): Promise<{
       isSupported: false,
     };
   }
-  
+
   try {
     const status = await module.checkIfHasSMSPermission();
     return {
@@ -137,16 +137,16 @@ export async function checkSMSPermission(): Promise<{
  */
 export async function requestSMSPermission(): Promise<boolean> {
   logSMS('Requesting SMS permission...');
-  
+
   if (Platform.OS !== 'android') {
     return false;
   }
-  
+
   const module = await loadSmsModule();
   if (!module) {
     return false;
   }
-  
+
   try {
     const granted = await module.requestReadSMSPermission();
     logSMS('Permission request result:', granted);
@@ -176,65 +176,65 @@ let lastProcessedTime = 0;
  * Singleton Implementation: Ensures only one native listener is active
  */
 export function startSMSListener(): Promise<boolean> {
-   if (isListening) {
-     logSMS('ℹ️ SMS listener already running (State)');
-     return Promise.resolve(true);
-   }
+  if (isListening) {
+    logSMS('ℹ️ SMS listener already running (State)');
+    return Promise.resolve(true);
+  }
 
-   if (startListenerPromise) {
-     logSMS('ℹ️ SMS listener initialization already in progress...');
-     return startListenerPromise;
-   }
+  if (startListenerPromise) {
+    logSMS('ℹ️ SMS listener initialization already in progress...');
+    return startListenerPromise;
+  }
 
-   startListenerPromise = (async () => {
-      logSMS('====== STARTING SMS LISTENER (SINGLETON) ======');
-      
-      if (Platform.OS !== 'android') {
-        logSMS('❌ SMS reading not supported on this platform');
-        return false;
-      }
-      
-      const module = await loadSmsModule();
-      if (!module) {
-        logSMS('❌ SMS module not available');
-        return false;
-      }
-      
-      const permissions = await checkSMSPermission();
-      if (!permissions.hasReadSmsPermission || !permissions.hasReceiveSmsPermission) {
-        logSMS('❌ SMS permissions not granted');
-        return false;
-      }
-      
-      try {
-        logSMS('Calling native startReadSMS...');
-        
-        module.startReadSMS(
-          (status: string, sms: string, error: string) => {
-            if (status === 'success' && sms) {
-              handleIncomingSMS(sms);
-            }
-          },
-          (status: string, sms: string, error: string) => {
-             // Error callback
-             if (error && !error.includes('already running')) {
-                 logSMS('❌ SMS ERROR CALLBACK:', error);
-             }
+  startListenerPromise = (async () => {
+    logSMS('====== STARTING SMS LISTENER (SINGLETON) ======');
+
+    if (Platform.OS !== 'android') {
+      logSMS('❌ SMS reading not supported on this platform');
+      return false;
+    }
+
+    const module = await loadSmsModule();
+    if (!module) {
+      logSMS('❌ SMS module not available');
+      return false;
+    }
+
+    const permissions = await checkSMSPermission();
+    if (!permissions.hasReadSmsPermission || !permissions.hasReceiveSmsPermission) {
+      logSMS('❌ SMS permissions not granted');
+      return false;
+    }
+
+    try {
+      logSMS('Calling native startReadSMS...');
+
+      module.startReadSMS(
+        (status: string, sms: string, error: string) => {
+          if (status === 'success' && sms) {
+            handleIncomingSMS(sms);
           }
-         );
-        
-        isListening = true;
-        logSMS('✅ SMS listener started successfully');
-        return true;
-      } catch (error) {
-        logSMS('❌ Error starting SMS listener:', error);
-        return false;
-      } finally {
-        startListenerPromise = null;
-      }
-   })();
+        },
+        (status: string, sms: string, error: string) => {
+          // Error callback
+          if (error && !error.includes('already running')) {
+            logSMS('❌ SMS ERROR CALLBACK:', error);
+          }
+        }
+      );
 
-   return startListenerPromise;
+      isListening = true;
+      logSMS('✅ SMS listener started successfully');
+      return true;
+    } catch (error) {
+      logSMS('❌ Error starting SMS listener:', error);
+      return false;
+    } finally {
+      startListenerPromise = null;
+    }
+  })();
+
+  return startListenerPromise;
 }
 
 /**
@@ -245,10 +245,10 @@ function handleIncomingSMS(smsData: string) {
   // If we receive the exact same raw string within 5 seconds, ignore it.
   const now = Date.now();
   if (smsData === lastProcessedRawSms && (now - lastProcessedTime < 5000)) {
-     logSMS('Ignoring duplicate RAW SMS event');
-     return;
+    logSMS('Ignoring duplicate RAW SMS event');
+    return;
   }
-  
+
   lastProcessedRawSms = smsData;
   lastProcessedTime = now;
 
@@ -256,7 +256,7 @@ function handleIncomingSMS(smsData: string) {
   logSMS('Raw data length:', smsData.length);
   // ... rest of processing
 
-  
+
   const historyEntry: typeof smsHistory[0] = {
     timestamp: new Date(),
     rawData: smsData,
@@ -265,12 +265,12 @@ function handleIncomingSMS(smsData: string) {
     parsed: false,
     transaction: null,
   };
-  
+
   try {
     // Parsing logic for different Android SMS formats (Array string usually)
     let senderNumber: string | null = null;
     let messageBody: string | null = null;
-    
+
     // Try format 1 & 2: [sender, body]
     const bracketMatch = smsData.match(/^\[([^\],]+),\s*(.+)\]$/s);
     if (bracketMatch) {
@@ -282,7 +282,7 @@ function handleIncomingSMS(smsData: string) {
       }
       logSMS('Parsed using bracket format');
     }
-    
+
     // Try alternative: split by first comma
     if (!senderNumber || !messageBody) {
       const firstCommaIndex = smsData.indexOf(',');
@@ -292,32 +292,32 @@ function handleIncomingSMS(smsData: string) {
         logSMS('Parsed using comma split');
       }
     }
-    
+
     if (!senderNumber || !messageBody) {
       logSMS('❌ Could not parse SMS data format');
       historyEntry.parsed = false;
       smsHistory.unshift(historyEntry);
       return;
     }
-    
+
     historyEntry.sender = senderNumber;
     historyEntry.body = messageBody;
-    
+
     // Emit debug event
     DeviceEventEmitter.emit(SMS_DEBUG_EVENT, { sender: senderNumber, body: messageBody, raw: smsData });
-    
+
     // Check if it looks like a bank transaction before processing
     // Heuristic: Must have amount and some transaction keywords
     const isPotentialTransaction = /Rs\.?|INR|₹|debited|credited|spent|received|txn/i.test(messageBody);
-    
+
     if (isPotentialTransaction) {
-        processMessage(senderNumber, messageBody, historyEntry);
+      processMessage(senderNumber, messageBody, historyEntry);
     } else {
-        logSMS('ℹ️ Ignored non-transaction SMS');
-        historyEntry.parsed = false;
-        smsHistory.unshift(historyEntry);
+      logSMS('ℹ️ Ignored non-transaction SMS');
+      historyEntry.parsed = false;
+      smsHistory.unshift(historyEntry);
     }
-    
+
   } catch (error) {
     logSMS('❌ Error parsing SMS data:', error);
     historyEntry.parsed = false;
@@ -332,14 +332,14 @@ function handleIncomingSMS(smsData: string) {
  * Process and parse bank message
  */
 async function processMessage(
-  senderNumber: string, 
+  senderNumber: string,
   messageBody: string,
   historyEntry: typeof smsHistory[0]
 ) {
   logSMS('====== PROCESSING MESSAGE ======');
-  
+
   let transaction: ParsedTransaction | null = null;
-  
+
   // 1. Try Gemini API first (High Accuracy)
   try {
     logSMS('🤖 Asking Gemini to parse...');
@@ -347,32 +347,32 @@ async function processMessage(
     // Assuming backend is reachable at relative path if proxied, 
     // or we need the full URL from env.
     // We need the backend URL.
-    const API_URL = 'https://test-backend-theta-one.vercel.app';
-    
+    const API_URL = 'http://192.168.31.183:3001';
+
     const response = await fetch(`${API_URL}/api/parse-sms`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sender: senderNumber, message: messageBody })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sender: senderNumber, message: messageBody })
     });
 
     const json = await response.json();
-    
+
     if (json.success && json.data && json.data.isTransaction) {
-        logSMS('✅ Gemini identified transaction!');
-        const d = json.data;
-        transaction = {
-            type: d.type || 'debit',
-            amount: d.amount || 0,
-            bankName: d.bankName || extractBankName(senderNumber, messageBody), // Fallback to local name extraction
-            accountLast4: d.accountLast4,
-            merchant: d.merchant,
-            balance: d.balance,
-            rawMessage: messageBody,
-            senderNumber: senderNumber,
-            timestamp: new Date(),
-        };
+      logSMS('✅ Gemini identified transaction!');
+      const d = json.data;
+      transaction = {
+        type: d.type || 'debit',
+        amount: d.amount || 0,
+        bankName: d.bankName || extractBankName(senderNumber, messageBody), // Fallback to local name extraction
+        accountLast4: d.accountLast4,
+        merchant: d.merchant,
+        balance: d.balance,
+        rawMessage: messageBody,
+        senderNumber: senderNumber,
+        timestamp: new Date(),
+      };
     } else {
-        logSMS('🤖 Gemini said: Not a transaction or failed to parse details.');
+      logSMS('🤖 Gemini said: Not a transaction or failed to parse details.');
     }
   } catch (apiError) {
     logSMS('⚠️ Gemini API failed, falling back to local regex:', apiError);
@@ -383,18 +383,18 @@ async function processMessage(
     logSMS('Using local regex parser fallback...');
     transaction = parseBankSMS(senderNumber, messageBody);
   }
-  
+
   historyEntry.parsed = !!transaction;
   historyEntry.transaction = transaction;
   smsHistory.unshift(historyEntry);
-  
+
   if (smsHistory.length > 50) smsHistory.pop();
-  
+
   if (transaction) {
     logSMS('✅ TRANSACTION DETECTED!');
     logSMS('  Bank:', transaction.bankName);
     logSMS('  Amount:', transaction.amount);
-    
+
     // BROADCAST EVENT
     logSMS('🎙️ Broadcasting transaction event...');
     DeviceEventEmitter.emit(SMS_TRANSACTION_EVENT, transaction);

@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const API_URL = 'https://test-backend-theta-one.vercel.app';
+const API_URL = 'http://192.168.31.183:3001';
 
 const useWarmUpBrowser = () => {
   useEffect(() => {
@@ -56,7 +56,7 @@ export default function SignUpScreen() {
   const { isSignedIn } = useAuth();
   const { user } = useUser();
   const router = useRouter();
-  
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -96,7 +96,7 @@ export default function SignUpScreen() {
     if (!isLoaded || !signUp) return;
     setLoading(true);
     setError('');
-    
+
     try {
       await signUp.create({ emailAddress: email, password, firstName: name });
       await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
@@ -112,7 +112,7 @@ export default function SignUpScreen() {
     if (!isLoaded || !signUp) return;
     setLoading(true);
     setError('');
-    
+
     try {
       const result = await signUp.attemptEmailAddressVerification({ code });
       if (result.status === 'complete' && result.createdSessionId) {
@@ -209,25 +209,25 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   keyboardView: { flex: 1, justifyContent: 'center', padding: 24 },
   header: { alignItems: 'center', marginBottom: 32 },
-  logoContainer: { 
-    width: 64, 
-    height: 64, 
-    borderRadius: 16, 
-    backgroundColor: Colors.primaryMuted, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    marginBottom: 16 
+  logoContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: Colors.primaryMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16
   },
   title: { fontSize: 28, fontWeight: 'bold', color: Colors.textPrimary, marginBottom: 8 },
   subtitle: { fontSize: 16, color: Colors.textSecondary },
   form: { gap: 16 },
-  googleButton: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    backgroundColor: '#4285F4', 
-    borderRadius: 12, 
-    padding: 16, 
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4285F4',
+    borderRadius: 12,
+    padding: 16,
     gap: 12,
     borderWidth: 1,
     borderColor: Colors.border
@@ -238,14 +238,14 @@ const styles = StyleSheet.create({
   dividerText: { color: Colors.textMuted, paddingHorizontal: 16 },
   inputContainer: { gap: 6 },
   label: { fontSize: 14, fontWeight: '500', color: Colors.textSecondary },
-  input: { 
-    backgroundColor: Colors.cardHover, 
-    borderRadius: 12, 
-    padding: 16, 
-    fontSize: 16, 
-    color: Colors.textPrimary, 
-    borderWidth: 1, 
-    borderColor: Colors.border 
+  input: {
+    backgroundColor: Colors.cardHover,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: Colors.textPrimary,
+    borderWidth: 1,
+    borderColor: Colors.border
   },
   error: { color: Colors.error, fontSize: 14, textAlign: 'center' },
   button: { backgroundColor: Colors.secondary, borderRadius: 12, padding: 16, alignItems: 'center' },

@@ -1,7 +1,7 @@
 // Use your computer's IP address for local development (e.g., 192.168.1.x)
 // This is required because the Android emulator cannot access 'localhost' directly
 // For production, this will use the Vercel URL
-const API_URL = 'https://test-backend-theta-one.vercel.app';
+const API_URL = 'http://192.168.31.183:3001';
 
 // Database types
 export interface User {
@@ -230,7 +230,7 @@ export async function getDebts(
   let url = `/api/debts?user_id=${userId}`;
   if (options?.direction) url += `&direction=${options.direction}`;
   if (options?.isPaid !== undefined) url += `&is_paid=${options.isPaid}`;
-  
+
   const data = await apiCall<{ debts: Debt[] }>(url);
   return data.debts;
 }
@@ -302,10 +302,10 @@ export async function skipNextReminder(debtId: string): Promise<void> {
   // Get all pending reminders for this debt and delete the next one
   const data = await apiCall<{ reminders: Reminder[] }>(`/api/reminders?debt_id=${debtId}`);
   const pendingReminders = data.reminders.filter(r => !r.is_sent);
-  
+
   if (pendingReminders.length > 0) {
     // Sort by scheduled_for and delete the earliest one
-    pendingReminders.sort((a, b) => 
+    pendingReminders.sort((a, b) =>
       new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime()
     );
     await deleteReminder(pendingReminders[0].id);

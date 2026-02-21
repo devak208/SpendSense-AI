@@ -7,8 +7,8 @@ import * as Linking from 'expo-linking';
 import { useAuth } from '@clerk/clerk-expo';
 
 import { ParsedTransaction } from '@/lib/bankSmsParser';
-import { 
-  checkSMSPermission, 
+import {
+  checkSMSPermission,
   requestSMSPermission,
   isSMSReadingSupported,
   testSMSParsing,
@@ -16,15 +16,15 @@ import {
   clearSMSHistory,
   stopSMSListener // Helper to ensure we can stop if needed directly
 } from '@/lib/smsReader';
-import { 
-  getUserByClerkId, 
-  getCategories, 
+import {
+  getUserByClerkId,
+  getCategories,
   getPaymentMethods,
   createExpense,
   getUserCategories,
   Category,
   PaymentMethod,
-  UserCategory 
+  UserCategory
 } from '@/lib/supabase';
 import TransactionDetectedModal from '@/components/TransactionDetectedModal';
 import {
@@ -32,11 +32,11 @@ import {
   stopSMSForegroundService
 } from '@/lib/foregroundService';
 import notifee, { EventType } from '@notifee/react-native';
-import { 
-  addTransactionToQueue, 
-  getPendingTransactions, 
-  removeTransactionFromQueue, 
-  QueuedTransaction 
+import {
+  addTransactionToQueue,
+  getPendingTransactions,
+  removeTransactionFromQueue,
+  QueuedTransaction
 } from '@/lib/transactionQueue';
 
 interface SMSTransactionContextType {
@@ -69,18 +69,18 @@ interface SMSTransactionProviderProps {
 
 export function SMSTransactionProvider({ children }: SMSTransactionProviderProps) {
   const { userId, isSignedIn } = useAuth();
-  
+
   const [isEnabled, setIsEnabled] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [dbUserId, setDbUserId] = useState<string | null>(null);
-  
+
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
   // Renamed from pendingTransaction for clarity, now pulls from queue
   const [currentTransaction, setCurrentTransaction] = useState<QueuedTransaction | null>(null);
-  
+
   // Data for modal
   const [categories, setCategories] = useState<Category[]>([]);
   const [subCategories, setSubCategories] = useState<UserCategory[]>([]);
@@ -105,12 +105,12 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
 
   const initializeUser = async () => {
     if (!userId) return;
-    
+
     try {
       const user = await getUserByClerkId(userId);
       if (user) {
         setDbUserId(user.id);
-        
+
         // Load categories and payment methods for the modal
         const [cats, userCats, pms] = await Promise.all([
           getCategories(user.id),
@@ -120,12 +120,12 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
         setCategories(cats);
         setSubCategories(userCats.all || []);
         setPaymentMethods(pms);
-        
+
         // Check permission status
         const permStatus = await checkSMSPermission();
         const hasPerm = permStatus.hasReadSmsPermission && permStatus.hasReceiveSmsPermission;
         setHasPermission(hasPerm);
-        
+
         if (hasPerm) {
           console.log('[SMSContext] Permissions granted, ensuring service is active...');
           enableSMSDetection();
@@ -144,21 +144,36 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
     const queue = await getPendingTransactions();
     if (queue.length > 0) {
       console.log('[SMSContext] Processing queue. Items pending:', queue.length);
+
+      // Refresh categories before showing modal to get any newly created ones
+      if (dbUserId) {
+        try {
+          const [cats, userCats] = await Promise.all([
+            getCategories(dbUserId),
+            getUserCategories(dbUserId),
+          ]);
+          setCategories(cats);
+          setSubCategories(userCats.all || []);
+        } catch (e) {
+          console.error('[SMSContext] Error refreshing categories:', e);
+        }
+      }
+
       const nextItem = queue[0];
       setCurrentTransaction(nextItem);
       setModalVisible(true);
     } else {
       // Queue empty
     }
-  }, [modalVisible]);
+  }, [modalVisible, dbUserId]);
 
   // Handle detected transaction (from SMS or Deep Link)
   const handleTransactionDetected = useCallback(async (transaction: ParsedTransaction) => {
     console.log('[SMSContext] New transaction detected. Adding to queue:', transaction);
-    
+
     // Add to persistent queue
     await addTransactionToQueue(transaction);
-    
+
     // Try to process immediately
     await processQueue();
   }, [processQueue]);
@@ -169,7 +184,7 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
       processQueue();
     }
   }, [modalVisible, processQueue]);
-  
+
   // Also check queue on mount/auth load
   useEffect(() => {
     if (isSignedIn && hasPermission) {
@@ -219,7 +234,7 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
 
   // Ref to track if initial notification was processed to prevent loops
   const initialNotificationProcessed = useRef(false);
-  
+
   // Keep latest handler in ref to access inside stable effects
   const handleTransactionDetectedRef = useRef(handleTransactionDetected);
   useEffect(() => {
@@ -230,24 +245,24 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
   useEffect(() => {
     // 1. Handle app launch from notification (Cold Start) - RUN ONCE ONLY
     if (!initialNotificationProcessed.current) {
-        notifee.getInitialNotification().then(initialNotification => {
+      notifee.getInitialNotification().then(initialNotification => {
         if (initialNotification?.notification.data?.type === 'new_transaction') {
-            const transactionData = initialNotification.notification.data.transaction;
-            if (typeof transactionData === 'string') {
+          const transactionData = initialNotification.notification.data.transaction;
+          if (typeof transactionData === 'string') {
             try {
-                const transaction = JSON.parse(transactionData);
-                console.log('[SMSContext] App launched from transaction notification (Initial):', transaction);
-                initialNotificationProcessed.current = true; // Mark as processed
-                // Delay slightly to allow app to initialize
-                setTimeout(() => {
-                   handleTransactionDetectedRef.current(transaction);
-                }, 1000);
+              const transaction = JSON.parse(transactionData);
+              console.log('[SMSContext] App launched from transaction notification (Initial):', transaction);
+              initialNotificationProcessed.current = true; // Mark as processed
+              // Delay slightly to allow app to initialize
+              setTimeout(() => {
+                handleTransactionDetectedRef.current(transaction);
+              }, 1000);
             } catch (e) {
-                console.error('Error parsing initial notification data:', e);
+              console.error('Error parsing initial notification data:', e);
             }
-            }
+          }
         }
-        });
+      });
     }
 
     // 2. Handle foreground/background events while app is in memory
@@ -272,12 +287,12 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
   // Enable SMS detection
   const enableSMSDetection = async (): Promise<boolean> => {
     if (!isSupported) {
-       return false;
+      return false;
     }
 
     // Check permissions
     let permStatus = await checkSMSPermission();
-    
+
     if (!permStatus.hasReadSmsPermission || !permStatus.hasReceiveSmsPermission) {
       const granted = await requestSMSPermission();
       if (!granted) {
@@ -302,9 +317,9 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
       const serviceStarted = await startSMSForegroundService();
       if (serviceStarted) {
         console.log('[SMSContext] Foreground service started (Sole Listener)');
-        setIsEnabled(true); 
+        setIsEnabled(true);
       }
-      
+
       setIsListening(serviceStarted);
       return serviceStarted;
     } catch (e) {
@@ -352,32 +367,32 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
         amount: data.amount,
         type: data.type,
         note: (() => {
-           let finalNote = data.note;
-           // Append rich details to note if available
-           const details = [];
-           if (currentTransaction.merchant) details.push(`Merchant: ${currentTransaction.merchant}`);
-           if (currentTransaction.senderNumber) details.push(`Sender: ${currentTransaction.senderNumber}`);
-           if (currentTransaction.accountLast4) details.push(`Acc: ..${currentTransaction.accountLast4}`);
-           if (currentTransaction.bankName) details.push(`Bank: ${currentTransaction.bankName}`);
-           
-           if (details.length > 0) {
-             finalNote = `${finalNote ? finalNote + '\n' : ''}[SMS: ${details.join(' | ')}]`;
-           }
-           return finalNote;
+          let finalNote = data.note;
+          // Append rich details to note if available
+          const details = [];
+          if (currentTransaction.merchant) details.push(`Merchant: ${currentTransaction.merchant}`);
+          if (currentTransaction.senderNumber) details.push(`Sender: ${currentTransaction.senderNumber}`);
+          if (currentTransaction.accountLast4) details.push(`Acc: ..${currentTransaction.accountLast4}`);
+          if (currentTransaction.bankName) details.push(`Bank: ${currentTransaction.bankName}`);
+
+          if (details.length > 0) {
+            finalNote = `${finalNote ? finalNote + '\n' : ''}[SMS: ${details.join(' | ')}]`;
+          }
+          return finalNote;
         })(),
         expense_date: new Date().toISOString().split('T')[0],
       });
-      
+
       console.log('Transaction saved successfully');
-      
+
       // Remove from queue and close modal
       await removeTransactionFromQueue(currentTransaction.id);
       await notifee.cancelNotification('new_transaction_alert');
       setModalVisible(false);
       setCurrentTransaction(null);
-      
+
       // Process next item will trigger via useEffect when modalVisible becomes false
-      
+
     } catch (error) {
       console.error('Error saving transaction:', error);
       Alert.alert('Error', 'Failed to save transaction. Please try again.');
@@ -420,6 +435,8 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
         paymentMethods={paymentMethods}
         onSave={handleSaveTransaction}
         onDismiss={handleDismissModal}
+        onCategoryCreated={(newCat) => setCategories(prev => [...prev, newCat])}
+        onSubCategoryCreated={(newSub) => setSubCategories(prev => [...prev, newSub])}
       />
     </SMSTransactionContext.Provider>
   );

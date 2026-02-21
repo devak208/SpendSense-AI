@@ -200,8 +200,8 @@ export default function TabLayout() {
         }}
       />
       {/* Hidden screens */}
-      <Tabs.Screen name="add-debt" options={{ href: null }} />
-      <Tabs.Screen name="debts" options={{ href: null }} />
+      <Tabs.Screen name="add-debt" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="debts" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="summary" options={{ href: null }} />
       <Tabs.Screen name="explore" options={{ href: null }} />
     </Tabs>

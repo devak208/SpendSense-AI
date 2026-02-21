@@ -44,13 +44,13 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [notificationStatus, setNotificationStatus] = useState<string>('checking');
   const [loading, setLoading] = useState(true);
-  
+
   // SMS Transaction Detection
-  const { 
-    isEnabled: smsEnabled, 
+  const {
+    isEnabled: smsEnabled,
     isSupported: smsSupported,
     hasPermission: smsHasPermission,
-    enableSMSDetection, 
+    enableSMSDetection,
     disableSMSDetection,
     testParsing,
     getHistory,
@@ -73,8 +73,8 @@ export default function ProfileScreen() {
       'Are you sure you want to sign out?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Sign Out', 
+        {
+          text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
             await signOut();
@@ -91,11 +91,11 @@ export default function ProfileScreen() {
       if (token) {
         const dbUser = await getUserByClerkId(user?.id!);
         if (dbUser) {
-           await updateUserPushToken(dbUser.id, token);
-           Alert.alert('Success', 'Notifications enabled!');
-           setNotificationStatus('granted');
+          await updateUserPushToken(dbUser.id, token);
+          Alert.alert('Success', 'Notifications enabled!');
+          setNotificationStatus('granted');
         } else {
-           Alert.alert('Error', 'User not found in database');
+          Alert.alert('Error', 'User not found in database');
         }
       } else {
         Alert.alert('Error', 'Failed to get push token. Please check settings.');
@@ -143,10 +143,10 @@ export default function ProfileScreen() {
     // Test with the BOI SMS format provided by user
     const testSender = 'BOI';
     const testMessage = 'Rs.1.00 debited A/cXX0983 and credited to sabeshragav289-1@okaxis via UPI Ref No 602967392852 on 29Jan26. Call 18001031906, if not done by you. -BOI';
-    
+
     console.log('\n========== TESTING SMS PARSING ==========');
     const result = testParsing(testSender, testMessage);
-    
+
     if (result) {
       Alert.alert(
         '✅ SMS Parsed Successfully',
@@ -172,11 +172,11 @@ export default function ProfileScreen() {
       Alert.alert('No SMS History', 'No SMS messages have been received yet. Enable SMS detection first.');
       return;
     }
-    
-    const summary = history.slice(0, 5).map((h, i) => 
+
+    const summary = history.slice(0, 5).map((h, i) =>
       `${i + 1}. ${h.sender || 'Unknown'} - ${h.parsed ? (h.transaction ? '✅ Bank' : '⏭️ Ignored') : '❌ Error'}`
     ).join('\n');
-    
+
     Alert.alert(
       `SMS History (${history.length} total)`,
       summary + (history.length > 5 ? `\n...and ${history.length - 5} more` : ''),
@@ -190,27 +190,27 @@ export default function ProfileScreen() {
   const menuItems = [
     { icon: 'file-text', title: 'Debts & Reminders', subtitle: 'Manage your debts', onPress: () => router.push('/(tabs)/debts') },
     { icon: 'pie-chart', title: 'Monthly Summary', subtitle: 'View spending insights', onPress: () => router.push('/(tabs)/summary') },
-    { 
-      icon: 'bell', 
+    {
+      icon: 'bell',
       title: notificationStatus === 'granted' ? 'Notifications Enabled' : 'Enable Notifications',
       subtitle: notificationStatus === 'granted' ? 'You will receive reminders' : 'Get reminded of due payments',
-      onPress: handleEnableNotifications 
+      onPress: handleEnableNotifications
     },
-    { 
-      icon: 'zap', 
-      title: 'Test Notification', 
+    {
+      icon: 'zap',
+      title: 'Test Notification',
       subtitle: 'Send a test reminder',
-      onPress: handleTestNotification 
+      onPress: handleTestNotification
     },
     // SMS Detection toggle (Android only)
     ...(Platform.OS === 'android' ? [
       {
         icon: 'message-square',
         title: smsEnabled ? 'SMS Detection On' : 'Auto-Detect Bank SMS',
-        subtitle: smsEnabled 
-          ? 'Tap to disable auto-detection' 
-          : smsSupported 
-            ? 'Auto-add expenses from bank SMS' 
+        subtitle: smsEnabled
+          ? 'Tap to disable auto-detection'
+          : smsSupported
+            ? 'Auto-add expenses from bank SMS'
             : 'Only available on Android',
         onPress: handleToggleSMSDetection,
         isEnabled: smsEnabled,
@@ -249,7 +249,7 @@ export default function ProfileScreen() {
         >
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Profile</Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => router.push('/(tabs)/debts')}
               style={styles.headerButton}
             >
@@ -291,13 +291,13 @@ export default function ProfileScreen() {
             <Text style={styles.userEmail}>{user?.primaryEmailAddress?.emailAddress}</Text>
           </View>
           <View style={[
-            styles.statusBadge, 
+            styles.statusBadge,
             notificationStatus === 'granted' ? styles.statusBadgeSuccess : styles.statusBadgeWarning
           ]}>
-            <Feather 
-              name={notificationStatus === 'granted' ? 'bell' : 'bell-off'} 
-              size={12} 
-              color={notificationStatus === 'granted' ? Colors.success : Colors.gold} 
+            <Feather
+              name={notificationStatus === 'granted' ? 'bell' : 'bell-off'}
+              size={12}
+              color={notificationStatus === 'granted' ? Colors.success : Colors.gold}
             />
             <Text style={[
               styles.statusText,
@@ -312,7 +312,7 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Bank Integration</Text>
           <View style={styles.menuSection}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.menuItem}
               onPress={async () => {
                 try {
@@ -321,30 +321,30 @@ export default function ProfileScreen() {
                   // For MVP, we send the Clerk User ID. Backend will look up or we pass dummy for now if needed.
                   // Typically AA requires mobile number matching the bank.
                   // Only proceed if we have user ID.
-                  
-                  // NOTE: In production, you might want to prompt for phone number if not stored.
-                  const mobileNumber = user?.primaryPhoneNumber?.phoneNumber || '9876543210'; 
 
-                  const API_URL = 'https://test-backend-theta-one.vercel.app';
+                  // NOTE: In production, you might want to prompt for phone number if not stored.
+                  const mobileNumber = user?.primaryPhoneNumber?.phoneNumber || '9876543210';
+
+                  const API_URL = 'http://192.168.31.183:3001';
                   const res = await fetch(`${API_URL}/api/setu/consent`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                       userId: user?.id,
-                      mobileNumber 
+                      mobileNumber
                     })
                   });
-                  
+
                   const data = await res.json();
                   if (data.url) {
-                     await Linking.openURL(data.url);
+                    await Linking.openURL(data.url);
                   } else {
-                     Alert.alert('Error', 'Failed to generate bank link URL');
+                    Alert.alert('Error', 'Failed to generate bank link URL');
                   }
                 } catch (e) {
-                   Alert.alert('Error', 'Connection failed');
+                  Alert.alert('Error', 'Connection failed');
                 } finally {
-                   setLoading(false);
+                  setLoading(false);
                 }
               }}
               activeOpacity={0.7}
@@ -366,8 +366,8 @@ export default function ProfileScreen() {
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.menuSection}>
             {menuItems.map((item, index) => (
-              <TouchableOpacity 
-                key={index} 
+              <TouchableOpacity
+                key={index}
                 style={[styles.menuItem, index === menuItems.length - 1 && styles.menuItemLast]}
                 onPress={item.onPress}
                 activeOpacity={0.7}
@@ -390,8 +390,8 @@ export default function ProfileScreen() {
           <Text style={styles.sectionTitle}>Settings</Text>
           <View style={styles.menuSection}>
             {settingsItems.map((item, index) => (
-              <TouchableOpacity 
-                key={index} 
+              <TouchableOpacity
+                key={index}
                 style={[styles.menuItem, index === settingsItems.length - 1 && styles.menuItemLast]}
                 activeOpacity={0.7}
               >

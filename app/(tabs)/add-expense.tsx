@@ -16,6 +16,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Animated,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,6 +31,7 @@ import {
   getUserCategories,
   createUserCategory,
   deleteUserCategory,
+  createDebt,
   Category,
   PaymentMethod,
   UserCategory,
@@ -110,6 +112,11 @@ export default function AddExpenseScreen() {
   const [newSubcategoryName, setNewSubcategoryName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
+  // Split expense state
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splitPeopleCount, setSplitPeopleCount] = useState(2);
+  const [splitNote, setSplitNote] = useState('');
+
   useEffect(() => { loadData(); }, [userId]);
 
   useEffect(() => {
@@ -163,15 +170,31 @@ export default function AddExpenseScreen() {
       Alert.alert('Error', 'Please enter a valid amount');
       return;
     }
+
+    // Validate split settings
+    if (splitEnabled && splitPeopleCount < 2) {
+      Alert.alert('Error', 'Split requires at least 2 people');
+      return;
+    }
+
     setSaving(true);
     try {
+      // Calculate split amounts
+      const userShare = splitEnabled ? Math.round((amountNum / splitPeopleCount) * 100) / 100 : amountNum;
+      const friendsShare = splitEnabled ? Math.round((amountNum - userShare) * 100) / 100 : 0;
+
+      // Create expense with full amount (annotated with split info if enabled)
+      const expenseNote = splitEnabled
+        ? `${note ? note + ' | ' : ''}Split: ₹${userShare.toFixed(2)} (you) + ₹${friendsShare.toFixed(2)} (${splitPeopleCount - 1} friends)`
+        : note || undefined;
+
       const expenseData: any = {
         user_id: dbUserId,
         category_id: selectedCategory.id,
         payment_method_id: selectedPayment.id,
-        amount: amountNum,
+        amount: amountNum, // Full amount for expense tracking
         type: transactionType,
-        note: note || undefined,
+        note: expenseNote,
         expense_date: date.toISOString().split('T')[0],
       };
 
@@ -180,8 +203,31 @@ export default function AddExpenseScreen() {
       }
 
       await createExpense(expenseData);
+
+      // If split enabled, create debt for friends' share
+      if (splitEnabled && friendsShare > 0) {
+        const debtName = splitNote.trim()
+          ? `Split: ${splitNote.trim()}`
+          : `Split: ${selectedCategory.name}${note ? ` - ${note}` : ''}`;
+
+        await createDebt({
+          user_id: dbUserId,
+          name: debtName,
+          description: `Split expense of ₹${amountNum} among ${splitPeopleCount} people`,
+          amount: friendsShare,
+          debt_type: 'other',
+          direction: 'receivable', // Money owed TO user
+          is_recurring: false,
+          reminder_enabled: false,
+          // No due_date - as per user request
+        });
+      }
+
       const typeLabel = transactionType === 'income' ? 'Income' : 'Expense';
-      Alert.alert('Success', `${typeLabel} added!`, [
+      const successMsg = splitEnabled
+        ? `${typeLabel} added! ₹${friendsShare.toFixed(2)} added to debts.`
+        : `${typeLabel} added!`;
+      Alert.alert('Success', successMsg, [
         { text: 'OK', onPress: () => router.replace('/(tabs)') },
       ]);
     } catch (error) {
@@ -202,6 +248,7 @@ export default function AddExpenseScreen() {
         name: newCategoryName.trim(),
         color,
         icon: 'tag',
+        category_type: transactionType,
       });
       if (transactionType === 'expense') {
         setExpenseCategories([...expenseCategories, newCat]);
@@ -245,13 +292,15 @@ export default function AddExpenseScreen() {
   const handleDeleteSubcategory = (sub: UserCategory) => {
     Alert.alert('Delete', `Delete "${sub.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try {
-          await deleteUserCategory(sub.id);
-          setSubcategories(prev => prev.filter(c => c.id !== sub.id));
-          if (selectedSubcategory?.id === sub.id) setSelectedSubcategory(null);
-        } catch { Alert.alert('Error', 'Cannot delete'); }
-      }},
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            await deleteUserCategory(sub.id);
+            setSubcategories(prev => prev.filter(c => c.id !== sub.id));
+            if (selectedSubcategory?.id === sub.id) setSelectedSubcategory(null);
+          } catch { Alert.alert('Error', 'Cannot delete'); }
+        }
+      },
     ]);
   };
 
@@ -279,10 +328,10 @@ export default function AddExpenseScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView 
-          style={styles.scrollView} 
-          contentContainerStyle={styles.scrollContent} 
-          keyboardShouldPersistTaps="handled" 
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {/* Header with Gradient */}
@@ -312,10 +361,10 @@ export default function AddExpenseScreen() {
                 <View style={[styles.decorCircle1, isIncome && { backgroundColor: Colors.successLight }]} />
                 <View style={[styles.decorCircle2, isIncome && { backgroundColor: Colors.successLight }]} />
                 <View style={styles.decorIcon}>
-                  <Feather 
-                    name={isIncome ? 'trending-up' : 'trending-down'} 
-                    size={24} 
-                    color={isIncome ? Colors.success : Colors.error} 
+                  <Feather
+                    name={isIncome ? 'trending-up' : 'trending-down'}
+                    size={24}
+                    color={isIncome ? Colors.success : Colors.error}
                   />
                 </View>
               </View>
@@ -329,7 +378,7 @@ export default function AddExpenseScreen() {
               {/* Income/Expense Toggle */}
               <View style={styles.toggleWrapper}>
                 <View style={styles.toggleTrack}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.toggleOption, !isIncome && styles.toggleOptionExpenseActive]}
                     onPress={() => setTransactionType('expense')}
                     activeOpacity={0.8}
@@ -337,7 +386,7 @@ export default function AddExpenseScreen() {
                     <Feather name="arrow-up-right" size={14} color={!isIncome ? '#FFF' : Colors.textSecondary} />
                     <Text style={[styles.toggleLabel, !isIncome && styles.toggleLabelActive]}>Expense</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.toggleOption, isIncome && styles.toggleOptionIncomeActive]}
                     onPress={() => setTransactionType('income')}
                     activeOpacity={0.8}
@@ -405,13 +454,13 @@ export default function AddExpenseScreen() {
                   <Feather name="chevron-right" size={18} color={Colors.textSecondary} />
                 </TouchableOpacity>
                 {showDatePicker && (
-                  <DateTimePicker 
-                    value={date} 
-                    mode="date" 
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'} 
-                    onChange={onDateChange} 
-                    maximumDate={new Date()} 
-                    themeVariant="light" 
+                  <DateTimePicker
+                    value={date}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={onDateChange}
+                    maximumDate={new Date()}
+                    themeVariant="light"
                   />
                 )}
               </View>
@@ -421,13 +470,13 @@ export default function AddExpenseScreen() {
                 <Text style={styles.sectionTitle}>{isIncome ? 'Received Via' : 'Payment Method'}</Text>
                 <View style={styles.paymentRow}>
                   {paymentMethods.map((m) => (
-                    <TouchableOpacity 
-                      key={m.id} 
+                    <TouchableOpacity
+                      key={m.id}
                       style={[
-                        styles.paymentChip, 
+                        styles.paymentChip,
                         selectedPayment?.id === m.id && styles.paymentChipSelected,
                         selectedPayment?.id === m.id && isIncome && styles.paymentChipIncome
-                      ]} 
+                      ]}
                       onPress={() => setSelectedPayment(m)}
                     >
                       <Feather name={PaymentIcons[m.name] as any || 'credit-card'} size={14} color={selectedPayment?.id === m.id ? '#FFF' : Colors.textSecondary} />
@@ -437,10 +486,88 @@ export default function AddExpenseScreen() {
                 </View>
               </View>
 
+              {/* Split Expense Section - Only for expenses */}
+              {!isIncome && (
+                <View style={styles.section}>
+                  <View style={styles.splitHeader}>
+                    <View style={styles.splitTitleRow}>
+                      <View style={[styles.dropdownIcon, { backgroundColor: Colors.primaryMuted }]}>
+                        <Feather name="users" size={16} color={Colors.primary} />
+                      </View>
+                      <Text style={styles.splitTitle}>Split with Friends</Text>
+                    </View>
+                    <Switch
+                      value={splitEnabled}
+                      onValueChange={(value) => {
+                        setSplitEnabled(value);
+                        if (!value) {
+                          setSplitPeopleCount(2);
+                          setSplitNote('');
+                        }
+                      }}
+                      trackColor={{ false: Colors.border, true: Colors.primaryMuted }}
+                      thumbColor={splitEnabled ? Colors.primary : Colors.textMuted}
+                    />
+                  </View>
+
+                  {splitEnabled && (
+                    <View style={styles.splitContent}>
+                      {/* People Counter */}
+                      <View style={styles.splitRow}>
+                        <Text style={styles.splitLabel}>Total People (including you)</Text>
+                        <View style={styles.stepper}>
+                          <TouchableOpacity
+                            style={[styles.stepperBtn, splitPeopleCount <= 2 && styles.stepperBtnDisabled]}
+                            onPress={() => setSplitPeopleCount(Math.max(2, splitPeopleCount - 1))}
+                            disabled={splitPeopleCount <= 2}
+                          >
+                            <Feather name="minus" size={16} color={splitPeopleCount <= 2 ? Colors.textMuted : Colors.textPrimary} />
+                          </TouchableOpacity>
+                          <Text style={styles.stepperValue}>{splitPeopleCount}</Text>
+                          <TouchableOpacity
+                            style={styles.stepperBtn}
+                            onPress={() => setSplitPeopleCount(splitPeopleCount + 1)}
+                          >
+                            <Feather name="plus" size={16} color={Colors.textPrimary} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      {/* Split Preview */}
+                      {amount && parseFloat(amount.replace(/,/g, '')) > 0 && (
+                        <View style={styles.splitPreview}>
+                          <View style={styles.splitPreviewRow}>
+                            <Text style={styles.splitPreviewLabel}>Your share</Text>
+                            <Text style={styles.splitPreviewValue}>
+                              ₹{(parseFloat(amount.replace(/,/g, '')) / splitPeopleCount).toFixed(2)}
+                            </Text>
+                          </View>
+                          <View style={styles.splitPreviewRow}>
+                            <Text style={styles.splitPreviewLabel}>Friends owe you</Text>
+                            <Text style={[styles.splitPreviewValue, { color: Colors.success }]}>
+                              ₹{(parseFloat(amount.replace(/,/g, '')) - (parseFloat(amount.replace(/,/g, '')) / splitPeopleCount)).toFixed(2)}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Split Note */}
+                      <TextInput
+                        style={styles.splitNoteInput}
+                        placeholder="Split description (e.g., Dinner at ABC)"
+                        placeholderTextColor={Colors.textMuted}
+                        value={splitNote}
+                        onChangeText={setSplitNote}
+                      />
+                    </View>
+                  )}
+                </View>
+              )}
+
               {/* Save Button */}
-              <TouchableOpacity 
-                style={[styles.saveBtn, saving && styles.saveBtnDisabled]} 
-                onPress={handleSave} 
+              <TouchableOpacity
+                style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+                onPress={handleSave}
                 disabled={saving}
                 activeOpacity={0.8}
               >
@@ -513,8 +640,8 @@ export default function AddExpenseScreen() {
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowCreateCategory(false); setNewCategoryName(''); }}>
                   <Text style={styles.cancelBtnText}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.confirmBtn, (!newCategoryName.trim() || isCreating) && styles.confirmBtnDisabled, isIncome && styles.confirmBtnIncome]} 
+                <TouchableOpacity
+                  style={[styles.confirmBtn, (!newCategoryName.trim() || isCreating) && styles.confirmBtnDisabled, isIncome && styles.confirmBtnIncome]}
                   onPress={handleCreateCategory}
                   disabled={!newCategoryName.trim() || isCreating}
                 >
@@ -599,8 +726,8 @@ export default function AddExpenseScreen() {
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowCreateSubcategory(false); setNewSubcategoryName(''); }}>
                   <Text style={styles.cancelBtnText}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.confirmBtn, (!newSubcategoryName.trim() || isCreating) && styles.confirmBtnDisabled, isIncome && styles.confirmBtnIncome]} 
+                <TouchableOpacity
+                  style={[styles.confirmBtn, (!newSubcategoryName.trim() || isCreating) && styles.confirmBtnDisabled, isIncome && styles.confirmBtnIncome]}
                   onPress={handleCreateSubcategory}
                   disabled={!newSubcategoryName.trim() || isCreating}
                 >
@@ -616,30 +743,30 @@ export default function AddExpenseScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: Colors.background 
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background
   },
-  scrollView: { 
-    flex: 1 
+  scrollView: {
+    flex: 1
   },
-  scrollContent: { 
-    paddingBottom: 100 
+  scrollContent: {
+    paddingBottom: 100
   },
 
   // Header with Gradient
   headerGradient: {
     paddingBottom: 16,
   },
-  header: { 
+  header: {
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 8,
   },
-  title: { 
-    fontSize: 22, 
-    fontWeight: '700', 
-    color: Colors.textPrimary 
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.textPrimary
   },
 
   // Decorative Feature Card
@@ -713,14 +840,14 @@ const styles = StyleSheet.create({
   },
 
   // Toggle
-  toggleWrapper: { 
-    marginBottom: 20, 
-    alignItems: 'center' 
+  toggleWrapper: {
+    marginBottom: 20,
+    alignItems: 'center'
   },
-  toggleTrack: { 
-    flexDirection: 'row', 
-    backgroundColor: Colors.card, 
-    borderRadius: 12, 
+  toggleTrack: {
+    flexDirection: 'row',
+    backgroundColor: Colors.card,
+    borderRadius: 12,
     padding: 3,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -740,147 +867,147 @@ const styles = StyleSheet.create({
   toggleOptionIncomeActive: {
     backgroundColor: Colors.success,
   },
-  toggleLabel: { 
-    fontSize: 13, 
-    fontWeight: '600', 
-    color: Colors.textSecondary 
+  toggleLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textSecondary
   },
-  toggleLabelActive: { 
-    color: '#FFF' 
+  toggleLabelActive: {
+    color: '#FFF'
   },
 
-  section: { 
-    marginBottom: 16 
+  section: {
+    marginBottom: 16
   },
-  sectionTitle: { 
-    fontSize: 11, 
-    fontWeight: '600', 
-    color: Colors.textMuted, 
-    textTransform: 'uppercase', 
-    letterSpacing: 0.5, 
-    marginBottom: 8 
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8
   },
-  
+
   // Amount
-  amountContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    paddingVertical: 16, 
-    backgroundColor: Colors.card, 
-    borderRadius: 14, 
-    borderWidth: 1, 
+  amountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    backgroundColor: Colors.card,
+    borderRadius: 14,
+    borderWidth: 1,
     borderColor: Colors.border,
   },
-  amountContainerIncome: { 
-    borderColor: Colors.success + '40' 
+  amountContainerIncome: {
+    borderColor: Colors.success + '40'
   },
-  currencySymbol: { 
-    fontSize: 22, 
-    fontWeight: '600', 
-    color: Colors.error, 
-    marginRight: 2 
+  currencySymbol: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: Colors.error,
+    marginRight: 2
   },
-  currencySymbolIncome: { 
-    color: Colors.success 
+  currencySymbolIncome: {
+    color: Colors.success
   },
-  amountInput: { 
-    fontSize: 32, 
-    fontWeight: '700', 
-    color: Colors.textPrimary, 
-    minWidth: 60, 
-    textAlign: 'center' 
+  amountInput: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    minWidth: 60,
+    textAlign: 'center'
   },
 
   // Dropdown
-  dropdown: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: Colors.card, 
-    borderRadius: 12, 
+  dropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.card,
+    borderRadius: 12,
     padding: 12,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  dropdownIcon: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 10, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    marginRight: 10 
+  dropdownIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10
   },
-  dropdownText: { 
-    flex: 1, 
-    fontSize: 14, 
+  dropdownText: {
+    flex: 1,
+    fontSize: 14,
     color: Colors.textPrimary,
     fontWeight: '500',
   },
-  customBadge: { 
-    backgroundColor: Colors.primary + '15', 
-    paddingHorizontal: 6, 
-    paddingVertical: 3, 
-    borderRadius: 6, 
-    marginRight: 6 
+  customBadge: {
+    backgroundColor: Colors.primary + '15',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 6
   },
-  customBadgeText: { 
-    fontSize: 10, 
-    fontWeight: '600', 
-    color: Colors.primary 
+  customBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.primary
   },
 
   // Payment
-  paymentRow: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    gap: 8 
+  paymentRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8
   },
-  paymentChip: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: Colors.card, 
-    borderRadius: 10, 
-    paddingHorizontal: 12, 
-    paddingVertical: 8, 
-    gap: 6, 
-    borderWidth: 1, 
-    borderColor: Colors.border 
+  paymentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.card,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: Colors.border
   },
-  paymentChipSelected: { 
-    backgroundColor: Colors.secondary, 
-    borderColor: Colors.secondary 
+  paymentChipSelected: {
+    backgroundColor: Colors.secondary,
+    borderColor: Colors.secondary
   },
-  paymentChipIncome: { 
-    backgroundColor: Colors.success, 
-    borderColor: Colors.success 
+  paymentChipIncome: {
+    backgroundColor: Colors.success,
+    borderColor: Colors.success
   },
-  paymentText: { 
-    fontSize: 12, 
+  paymentText: {
+    fontSize: 12,
     color: Colors.textSecondary,
     fontWeight: '500',
   },
-  paymentTextSelected: { 
-    color: '#FFF' 
+  paymentTextSelected: {
+    color: '#FFF'
   },
 
   // Save Button
-  saveBtn: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    backgroundColor: Colors.secondary, 
-    borderRadius: 10, 
-    padding: 14, 
-    gap: 8, 
-    marginTop: 20 
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.secondary,
+    borderRadius: 10,
+    padding: 14,
+    gap: 8,
+    marginTop: 20
   },
-  saveBtnDisabled: { 
-    opacity: 0.7 
+  saveBtnDisabled: {
+    opacity: 0.7
   },
-  saveBtnText: { 
-    fontSize: 15, 
-    fontWeight: '600', 
-    color: '#FFF' 
+  saveBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFF'
   },
   saveBtnChevron: {
     fontSize: 16,
@@ -889,165 +1016,257 @@ const styles = StyleSheet.create({
   },
 
   // Full Screen Modal
-  fullModal: { 
-    flex: 1, 
-    backgroundColor: Colors.background 
+  fullModal: {
+    flex: 1,
+    backgroundColor: Colors.background
   },
-  fullModalHeader: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    padding: 20, 
-    borderBottomWidth: 1, 
-    borderBottomColor: Colors.border 
+  fullModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border
   },
-  fullModalTitle: { 
-    fontSize: 16, 
-    fontWeight: '600', 
-    color: Colors.textPrimary 
+  fullModalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary
   },
-  fullModalScroll: { 
-    flex: 1, 
-    padding: 20 
+  fullModalScroll: {
+    flex: 1,
+    padding: 20
   },
-  sectionLabel: { 
-    fontSize: 11, 
-    fontWeight: '600', 
-    color: Colors.textSecondary, 
-    textTransform: 'uppercase', 
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
     marginBottom: 12,
     marginTop: 20,
   },
-  listItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: Colors.card, 
-    borderRadius: 12, 
-    padding: 14, 
+  listItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    padding: 14,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  listItemSelected: { 
-    backgroundColor: Colors.primary + '10', 
-    borderColor: Colors.primary 
+  listItemSelected: {
+    backgroundColor: Colors.primary + '10',
+    borderColor: Colors.primary
   },
-  listItemIcon: { 
-    width: 38, 
-    height: 38, 
-    borderRadius: 10, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    marginRight: 12 
+  listItemIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12
   },
-  listItemText: { 
-    flex: 1, 
-    fontSize: 14, 
-    fontWeight: '500', 
-    color: Colors.textPrimary 
+  listItemText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.textPrimary
   },
-  bottomAction: { 
-    position: 'absolute', 
-    bottom: 0, 
-    left: 0, 
-    right: 0, 
-    padding: 20, 
-    backgroundColor: Colors.background, 
-    borderTopWidth: 1, 
-    borderTopColor: Colors.border 
+  bottomAction: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    backgroundColor: Colors.background,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border
   },
-  createNewBtn: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    backgroundColor: Colors.secondary, 
-    borderRadius: 10, 
-    padding: 14, 
-    gap: 8 
+  createNewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.secondary,
+    borderRadius: 10,
+    padding: 14,
+    gap: 8
   },
-  createNewBtnIncome: { 
-    backgroundColor: Colors.success 
+  createNewBtnIncome: {
+    backgroundColor: Colors.success
   },
-  createNewBtnText: { 
-    fontSize: 14, 
-    fontWeight: '600', 
-    color: '#FFF' 
+  createNewBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF'
   },
-  emptyState: { 
-    alignItems: 'center', 
-    paddingVertical: 40 
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40
   },
-  emptyStateText: { 
-    fontSize: 14, 
-    fontWeight: '500', 
-    color: Colors.textSecondary, 
-    marginTop: 12 
+  emptyStateText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+    marginTop: 12
   },
-  deleteHint: { 
-    fontSize: 11, 
-    color: Colors.textMuted, 
-    textAlign: 'center', 
-    marginTop: 12 
+  deleteHint: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginTop: 12
   },
 
   // Create Form
-  createForm: { 
-    flex: 1, 
-    padding: 20, 
-    justifyContent: 'center' 
+  createForm: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center'
   },
-  createFormTitle: { 
-    fontSize: 18, 
-    fontWeight: '700', 
-    color: Colors.textPrimary, 
-    marginBottom: 20, 
-    textAlign: 'center' 
+  createFormTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 20,
+    textAlign: 'center'
   },
-  createFormInput: { 
-    backgroundColor: Colors.card, 
-    borderRadius: 12, 
-    padding: 16, 
-    fontSize: 16, 
-    color: Colors.textPrimary, 
+  createFormInput: {
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: Colors.textPrimary,
     textAlign: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  createFormActions: { 
-    flexDirection: 'row', 
-    gap: 12, 
-    marginTop: 20 
+  createFormActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20
   },
-  cancelBtn: { 
-    flex: 1, 
-    padding: 14, 
-    borderRadius: 10, 
-    backgroundColor: Colors.card, 
+  cancelBtn: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: Colors.card,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  cancelBtnText: { 
-    fontSize: 14, 
-    fontWeight: '600', 
-    color: Colors.textSecondary 
+  cancelBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary
   },
-  confirmBtn: { 
-    flex: 1, 
-    padding: 14, 
-    borderRadius: 10, 
-    backgroundColor: Colors.secondary, 
-    alignItems: 'center' 
+  confirmBtn: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: Colors.secondary,
+    alignItems: 'center'
   },
-  confirmBtnIncome: { 
-    backgroundColor: Colors.success 
+  confirmBtnIncome: {
+    backgroundColor: Colors.success
   },
-  confirmBtnDisabled: { 
-    opacity: 0.5 
+  confirmBtnDisabled: {
+    opacity: 0.5
   },
-  confirmBtnText: { 
-    fontSize: 14, 
-    fontWeight: '600', 
-    color: '#FFF' 
+  confirmBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF'
+  },
+
+  // Split Expense Styles
+  splitHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  splitTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  splitTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  splitContent: {
+    marginTop: 12,
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 16,
+  },
+  splitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  splitLabel: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    flex: 1,
+  },
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  stepperBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  stepperBtnDisabled: {
+    opacity: 0.4,
+  },
+  stepperValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    minWidth: 30,
+    textAlign: 'center',
+  },
+  splitPreview: {
+    backgroundColor: Colors.successLight,
+    borderRadius: 10,
+    padding: 12,
+    gap: 8,
+  },
+  splitPreviewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  splitPreviewLabel: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  splitPreviewValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  splitNoteInput: {
+    backgroundColor: Colors.background,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: Colors.textPrimary,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
 });

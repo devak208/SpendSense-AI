@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const API_URL = 'https://test-backend-theta-one.vercel.app';
+const API_URL = 'http://192.168.31.183:3001';
 
 export const useWarmUpBrowser = () => {
   useEffect(() => {
@@ -45,7 +45,7 @@ async function storeUserInDatabase(user: any) {
         name: user.fullName || user.firstName || 'User',
       }),
     });
-    
+
     if (response.ok) {
       const data = await response.json();
       console.log('[SignIn] User stored:', data);
@@ -65,7 +65,7 @@ export default function SignInScreen() {
   const { isSignedIn } = useAuth();
   const { user } = useUser();
   const router = useRouter();
-  
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -82,7 +82,7 @@ export default function SignInScreen() {
     try {
       setLoading(true);
       setError('');
-      
+
       const { createdSessionId, setActive: oauthSetActive, signUp } = await startOAuthFlow({
         redirectUrl: Linking.createURL('/oauth-native-callback', { scheme: 'expensetrackerapp' }),
       });
@@ -105,7 +105,7 @@ export default function SignInScreen() {
     if (!isLoaded) return;
     setLoading(true);
     setError('');
-    
+
     try {
       const result = await signIn.create({ identifier: email, password });
       if (result.status === 'complete' && result.createdSessionId) {
@@ -173,28 +173,28 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   keyboardView: { flex: 1, justifyContent: 'center', padding: 24 },
   header: { alignItems: 'center', marginBottom: 32 },
-  logoContainer: { 
-    width: 64, 
-    height: 64, 
-    borderRadius: 16, 
-    backgroundColor: Colors.primaryMuted, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    marginBottom: 16 
+  logoContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: Colors.primaryMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16
   },
   title: { fontSize: 28, fontWeight: 'bold', color: Colors.textPrimary, marginBottom: 8 },
   subtitle: { fontSize: 16, color: Colors.textSecondary },
   form: { gap: 16 },
-  googleButton: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#4285F4', // Google blue can stay
-    borderRadius: 12, 
-    padding: 16, 
+    borderRadius: 12,
+    padding: 16,
     gap: 12,
-    borderWidth: 1, 
-    borderColor: Colors.border 
+    borderWidth: 1,
+    borderColor: Colors.border
   },
   googleButtonText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
   divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 8 },
@@ -202,21 +202,21 @@ const styles = StyleSheet.create({
   dividerText: { color: Colors.textMuted, paddingHorizontal: 16 },
   inputContainer: { gap: 6 },
   label: { fontSize: 14, fontWeight: '500', color: Colors.textSecondary },
-  input: { 
-    backgroundColor: Colors.cardHover, 
-    borderRadius: 12, 
-    padding: 16, 
-    fontSize: 16, 
-    color: Colors.textPrimary, 
-    borderWidth: 1, 
-    borderColor: Colors.border 
+  input: {
+    backgroundColor: Colors.cardHover,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: Colors.textPrimary,
+    borderWidth: 1,
+    borderColor: Colors.border
   },
   error: { color: Colors.error, fontSize: 14, textAlign: 'center' },
-  button: { 
+  button: {
     backgroundColor: Colors.secondary, // Using Secondary (Navi Dark) for primary action
-    borderRadius: 12, 
-    padding: 16, 
-    alignItems: 'center' 
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center'
   },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: Colors.textLight, fontSize: 16, fontWeight: '600' },

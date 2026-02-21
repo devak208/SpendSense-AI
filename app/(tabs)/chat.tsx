@@ -1,19 +1,21 @@
 import { Feather } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
 import { useRouter } from 'expo-router';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  FlatList, 
-  KeyboardAvoidingView, 
-  Platform, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
   ActivityIndicator,
   Modal,
   Animated,
-  Dimensions
+  Dimensions,
+  Alert,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useRef, useEffect } from 'react';
@@ -21,6 +23,7 @@ import { useAuth, useUser } from '@clerk/clerk-expo';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { Colors } from '@/constants/Colors';
+import { getUserByClerkId } from '@/lib/supabase';
 
 type Message = {
   id: string;
@@ -40,7 +43,7 @@ export default function ChatScreen() {
   const router = useRouter();
   const slideAnim = useRef(new Animated.Value(-300)).current; // For sidebar
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
+
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -53,23 +56,25 @@ export default function ChatScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  
+
   // History State
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [dbUserId, setDbUserId] = useState<string | null>(null);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
-  
+
   // Streaming refs
   const rawResponse = useRef('');
-  const targetText = useRef(''); 
-  const displayedText = useRef(''); 
+  const targetText = useRef('');
+  const displayedText = useRef('');
   const processedRawIndex = useRef(0);
   const isStreaming = useRef(false);
   const currentAiResponseId = useRef<string | null>(null);
   const streamInterval = useRef<any>(null);
 
-  const API_URL = 'https://test-backend-theta-one.vercel.app';
+  const API_URL = 'http://192.168.31.183:3001';
 
   useEffect(() => {
     return () => {
@@ -77,17 +82,51 @@ export default function ChatScreen() {
     };
   }, []);
 
-  // Fetch sessions on mount
+  // Keyboard visibility listener
   useEffect(() => {
-    if (user) {
-      fetchSessions();
-    }
+    const showListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showListener.remove();
+      hideListener.remove();
+    };
+  }, []);
+
+  // Fetch database user ID and sessions on mount
+  useEffect(() => {
+    const initUser = async () => {
+      if (user) {
+        try {
+          const dbUser = await getUserByClerkId(user.id);
+          if (dbUser) {
+            setDbUserId(dbUser.id);
+          }
+        } catch (e) {
+          console.error('Error fetching db user:', e);
+        }
+      }
+    };
+    initUser();
   }, [user]);
 
+  // Fetch sessions when dbUserId is available
+  useEffect(() => {
+    if (dbUserId) {
+      fetchSessions();
+    }
+  }, [dbUserId]);
+
   const fetchSessions = async () => {
+    if (!dbUserId) return;
     try {
       setLoadingHistory(true);
-      const res = await fetch(`${API_URL}/api/chat/sessions?user_id=${user?.id}`);
+      const res = await fetch(`${API_URL}/api/chat/sessions?user_id=${dbUserId}`);
       const data = await res.json();
       if (Array.isArray(data)) {
         setSessions(data);
@@ -104,10 +143,10 @@ export default function ChatScreen() {
       setIsLoading(true);
       closeSidebar();
       setSessionId(id);
-      
+
       const res = await fetch(`${API_URL}/api/chat/history?session_id=${id}`);
       const data = await res.json();
-      
+
       if (Array.isArray(data)) {
         const formattedMessages: Message[] = data.map((msg: any) => ({
           id: msg.id,
@@ -133,6 +172,36 @@ export default function ChatScreen() {
       sender: 'ai',
       timestamp: new Date(),
     }]);
+  };
+
+  const deleteSession = (id: string, title: string) => {
+    Alert.alert(
+      'Delete Chat',
+      `Delete "${title || 'New Chat'}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await fetch(`${API_URL}/api/chat/sessions?session_id=${id}`, {
+                method: 'DELETE',
+              });
+              // Remove from local state
+              setSessions(prev => prev.filter(s => s.id !== id));
+              // If we deleted the current session, start a new chat
+              if (sessionId === id) {
+                startNewChat();
+              }
+            } catch (e) {
+              console.error('Error deleting session:', e);
+              Alert.alert('Error', 'Failed to delete chat');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const toggleSidebar = () => {
@@ -163,7 +232,7 @@ export default function ChatScreen() {
 
   const startStreamingLoop = () => {
     if (streamInterval.current) clearInterval(streamInterval.current);
-    
+
     streamInterval.current = setInterval(() => {
       if (!currentAiResponseId.current) return;
 
@@ -174,14 +243,14 @@ export default function ChatScreen() {
 
         const processingRegex = /\*Processing: ([\w\s]+)\.\.\.\*(\n)?/g;
         const completeRegex = /✓ ([\w\s]+)(\n)?/g;
-        
+
         let match;
         while ((match = processingRegex.exec(newChunk)) !== null) {
-            setProcessingStatus(match[1]); 
+          setProcessingStatus(match[1]);
         }
-        
+
         if (completeRegex.test(newChunk)) {
-             setProcessingStatus(null);
+          setProcessingStatus(null);
         }
 
         textToAdd = textToAdd.replace(processingRegex, '');
@@ -200,14 +269,14 @@ export default function ChatScreen() {
         const nextChunk = currentTarget.substring(currentDisplayed.length, currentDisplayed.length + speed);
         displayedText.current += nextChunk;
 
-        setMessages((prev) => 
-            prev.map(msg => 
-                msg.id === currentAiResponseId.current ? { ...msg, text: displayedText.current } : msg
-            )
+        setMessages((prev) =>
+          prev.map(msg =>
+            msg.id === currentAiResponseId.current ? { ...msg, text: displayedText.current } : msg
+          )
         );
       } else if (!isStreaming.current && !isLoading) {
-          if (streamInterval.current) clearInterval(streamInterval.current);
-          setProcessingStatus(null);
+        if (streamInterval.current) clearInterval(streamInterval.current);
+        setProcessingStatus(null);
       }
     }, 30);
   };
@@ -226,10 +295,10 @@ export default function ChatScreen() {
     setInput('');
     setIsLoading(true);
     setProcessingStatus(null);
-    rawResponse.current = ''; 
-    targetText.current = '';  
-    displayedText.current = ''; 
-    processedRawIndex.current = 0; 
+    rawResponse.current = '';
+    targetText.current = '';
+    displayedText.current = '';
+    processedRawIndex.current = 0;
     isStreaming.current = true;
 
     const aiResponseId = (Date.now() + 1).toString();
@@ -237,7 +306,7 @@ export default function ChatScreen() {
 
     const aiPlaceholder: Message = {
       id: aiResponseId,
-      text: '', 
+      text: '',
       sender: 'ai',
       timestamp: new Date(),
     };
@@ -249,14 +318,14 @@ export default function ChatScreen() {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${API_URL}/api/chat`, true);
       xhr.setRequestHeader('Content-Type', 'application/json');
-      
+
       let xhrProcessedIndex = 0;
 
       xhr.onprogress = () => {
         const fullResponse = xhr.responseText;
         const newChunk = fullResponse.substring(xhrProcessedIndex);
         if (newChunk) {
-            rawResponse.current += newChunk;
+          rawResponse.current += newChunk;
         }
         xhrProcessedIndex = fullResponse.length;
       };
@@ -265,29 +334,29 @@ export default function ChatScreen() {
         setIsLoading(false);
         isStreaming.current = false;
         if (xhr.status >= 200 && xhr.status < 300) {
-            const newSessionId = xhr.getResponseHeader('x-session-id');
-            if (newSessionId && !sessionId) {
-                setSessionId(newSessionId);
-            }
+          const newSessionId = xhr.getResponseHeader('x-session-id');
+          if (newSessionId && !sessionId) {
+            setSessionId(newSessionId);
+          }
         } else {
-             const errorResponse: Message = {
-                id: (Date.now() + 2).toString(),
-                text: `Error: ${xhr.status} - ${xhr.responseText}`,
-                sender: 'ai',
-                timestamp: new Date(),
-            };
-            setMessages((prev) => prev.filter(m => m.id !== aiResponseId).concat(errorResponse));
+          const errorResponse: Message = {
+            id: (Date.now() + 2).toString(),
+            text: `Error: ${xhr.status} - ${xhr.responseText}`,
+            sender: 'ai',
+            timestamp: new Date(),
+          };
+          setMessages((prev) => prev.filter(m => m.id !== aiResponseId).concat(errorResponse));
         }
       };
 
       xhr.onerror = () => {
-         setIsLoading(false);
-         isStreaming.current = false;
-         const errorResponse: Message = {
-            id: (Date.now() + 2).toString(),
-            text: "Network error occurred. Please try again.",
-            sender: 'ai',
-            timestamp: new Date(),
+        setIsLoading(false);
+        isStreaming.current = false;
+        const errorResponse: Message = {
+          id: (Date.now() + 2).toString(),
+          text: "Network error occurred. Please try again.",
+          sender: 'ai',
+          timestamp: new Date(),
         };
         setMessages((prev) => prev.filter(m => m.id !== aiResponseId).concat(errorResponse));
       };
@@ -307,7 +376,7 @@ export default function ChatScreen() {
 
   useEffect(() => {
     setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+      flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, [messages, processingStatus]); // Auto-scroll on processing status change too
 
@@ -315,7 +384,7 @@ export default function ChatScreen() {
     const isUser = item.sender === 'user';
     return (
       <View style={[
-        styles.messageContainer, 
+        styles.messageContainer,
         isUser ? styles.userMessageContainer : styles.aiMessageContainer
       ]}>
         {!isUser && (
@@ -324,7 +393,7 @@ export default function ChatScreen() {
           </View>
         )}
         <View style={[
-          styles.messageBubble, 
+          styles.messageBubble,
           isUser ? styles.userMessageBubble : styles.aiMessageBubble,
           !isUser && { paddingVertical: 8, paddingHorizontal: 12 }
         ]}>
@@ -334,7 +403,7 @@ export default function ChatScreen() {
             </Text>
           ) : (
             <Markdown style={markdownStyles} mergeStyle={false}>
-              {item.text} 
+              {item.text}
             </Markdown>
           )}
           <Text style={[styles.timestamp, isUser ? styles.userTimestamp : styles.aiTimestamp]}>
@@ -355,9 +424,9 @@ export default function ChatScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
-        <TouchableOpacity 
-          style={styles.overlay} 
-          activeOpacity={1} 
+        <TouchableOpacity
+          style={styles.overlay}
+          activeOpacity={1}
           onPress={closeSidebar}
         />
       )}
@@ -371,7 +440,7 @@ export default function ChatScreen() {
               <Feather name="edit" size={18} color={Colors.primary} />
             </TouchableOpacity>
           </View>
-          
+
           {loadingHistory ? (
             <ActivityIndicator color={Colors.primary} style={{ marginTop: 20 }} />
           ) : (
@@ -380,14 +449,21 @@ export default function ChatScreen() {
               keyExtractor={(item) => item.id}
               contentContainerStyle={{ padding: 16 }}
               renderItem={({ item }) => (
-                <TouchableOpacity 
-                  style={[styles.sessionItem, sessionId === item.id && styles.activeSession]} 
+                <TouchableOpacity
+                  style={[styles.sessionItem, sessionId === item.id && styles.activeSession]}
                   onPress={() => loadSession(item.id)}
                 >
                   <Feather name="message-square" size={16} color={sessionId === item.id ? Colors.primary : Colors.textSecondary} />
                   <Text style={[styles.sessionTitle, sessionId === item.id && styles.activeSessionText]} numberOfLines={1}>
                     {item.title || 'New Chat'}
                   </Text>
+                  <TouchableOpacity
+                    onPress={() => deleteSession(item.id, item.title)}
+                    style={styles.deleteSessionBtn}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Feather name="trash-2" size={14} color={Colors.error} />
+                  </TouchableOpacity>
                 </TouchableOpacity>
               )}
             />
@@ -395,7 +471,7 @@ export default function ChatScreen() {
         </SafeAreaView>
       </Animated.View>
 
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
       >
@@ -418,11 +494,11 @@ export default function ChatScreen() {
               </View>
             </View>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => router.push('/(tabs)/debts')}
               style={styles.headerButton}
             >
-               <Feather name="bell" size={20} color={Colors.textPrimary} />
+              <Feather name="bell" size={20} color={Colors.textPrimary} />
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -433,8 +509,8 @@ export default function ChatScreen() {
             <Text style={styles.quickPromptsTitle}>Quick actions</Text>
             <View style={styles.quickPrompts}>
               {quickPrompts.map((prompt, index) => (
-                <TouchableOpacity 
-                  key={index} 
+                <TouchableOpacity
+                  key={index}
                   style={styles.quickPromptChip}
                   onPress={() => setInput(prompt.text)}
                 >
@@ -448,24 +524,24 @@ export default function ChatScreen() {
 
         {/* Messages */}
         <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            renderItem={renderMessage}
-            contentContainerStyle={styles.messagesList}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-            ListFooterComponent={
-                processingStatus ? (
-                    <View style={styles.processingContainer}>
-                        <ActivityIndicator size="small" color={Colors.primary} />
-                        <Text style={styles.processingText}>Processing: {processingStatus.replace(/_/g, ' ')}...</Text>
-                    </View>
-                ) : null
-            }
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          renderItem={renderMessage}
+          contentContainerStyle={styles.messagesList}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          ListFooterComponent={
+            processingStatus ? (
+              <View style={styles.processingContainer}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={styles.processingText}>Processing: {processingStatus.replace(/_/g, ' ')}...</Text>
+              </View>
+            ) : null
+          }
         />
 
         {/* Input */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { paddingBottom: isKeyboardVisible ? 12 : 60 }]}>
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.input}
@@ -477,8 +553,8 @@ export default function ChatScreen() {
               maxLength={1000}
             />
           </View>
-          <TouchableOpacity 
-            style={[styles.sendButton, (!input.trim() || isLoading) && styles.sendButtonDisabled]} 
+          <TouchableOpacity
+            style={[styles.sendButton, (!input.trim() || isLoading) && styles.sendButtonDisabled]}
             onPress={sendMessage}
             disabled={!input.trim() || isLoading}
           >
@@ -509,7 +585,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 10,
+    zIndex: 998,
   },
   sidebar: {
     position: 'absolute',
@@ -518,7 +594,7 @@ const styles = StyleSheet.create({
     left: 0,
     width: 300,
     backgroundColor: Colors.background,
-    zIndex: 20,
+    zIndex: 999,
     shadowColor: "#000",
     shadowOffset: { width: 2, height: 0 },
     shadowOpacity: 0.25,
@@ -559,6 +635,9 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '600',
   },
+  deleteSessionBtn: {
+    padding: 4,
+  },
 
   // Header with Gradient
   headerGradient: {
@@ -567,7 +646,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between', 
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 4,
@@ -645,7 +724,7 @@ const styles = StyleSheet.create({
   // Messages
   messagesList: {
     padding: 16,
-    paddingBottom: 20, 
+    paddingBottom: 20,
   },
   messageContainer: {
     marginBottom: 12,

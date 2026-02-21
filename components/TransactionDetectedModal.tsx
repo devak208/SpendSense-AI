@@ -24,12 +24,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors, CategoryIcons, PaymentIcons } from '@/constants/Colors';
 import { ParsedTransaction, formatTransactionAmount } from '@/lib/bankSmsParser';
-import { 
-  Category, 
-  PaymentMethod, 
-  UserCategory, 
-  createCategory, 
-  createUserCategory, 
+import {
+  Category,
+  PaymentMethod,
+  UserCategory,
+  createCategory,
+  createUserCategory,
   getUserByClerkId,
   deleteUserCategory
 } from '@/lib/supabase';
@@ -51,6 +51,8 @@ interface TransactionDetectedModalProps {
     note: string;
   }) => void;
   onDismiss: () => void;
+  onCategoryCreated?: (category: Category) => void;
+  onSubCategoryCreated?: (subCategory: UserCategory) => void;
 }
 
 // Helper to map invalid database icons to valid Feather icons
@@ -74,6 +76,8 @@ export default function TransactionDetectedModal({
   paymentMethods,
   onSave,
   onDismiss,
+  onCategoryCreated,
+  onSubCategoryCreated,
 }: TransactionDetectedModalProps & { subCategories: UserCategory[] }) {
   const { userId } = useAuth();
   const [dbUserId, setDbUserId] = useState<string | null>(null);
@@ -87,11 +91,11 @@ export default function TransactionDetectedModal({
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>('');
   const [note, setNote] = useState('');
   const [amount, setAmount] = useState(0);
-  
+
   // UI State for Modals
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showSubCategoryModal, setShowSubCategoryModal] = useState(false);
-  
+
   // Creation State
   const [showCreateCategory, setShowCreateCategory] = useState(false);
   const [showCreateSubcategory, setShowCreateSubcategory] = useState(false);
@@ -118,21 +122,21 @@ export default function TransactionDetectedModal({
     if (visible && transaction) {
       setAmount(transaction.amount);
       setNote(transaction.bankName ? `${transaction.bankName} transaction` : 'Bank transaction');
-      
+
       // Set default category based on transaction type
       const relevantCategories = localCategories.filter(
         c => c.category_type === (transaction.type === 'credit' ? 'income' : 'expense')
       );
       if (relevantCategories.length > 0) {
         setSelectedCategoryId(relevantCategories[0].id);
-        setSelectedSubCategoryId(''); 
+        setSelectedSubCategoryId('');
       }
-      
+
       // Set default payment method
       if (paymentMethods.length > 0) {
         setSelectedPaymentMethodId(paymentMethods[0].id);
       }
-      
+
       // Animate in
       Animated.parallel([
         Animated.spring(slideAnim, {
@@ -166,7 +170,7 @@ export default function TransactionDetectedModal({
 
   const handleSave = () => {
     if (!selectedCategoryId || !selectedPaymentMethodId || !transaction) return;
-    
+
     onSave({
       amount,
       type: transaction.type === 'credit' ? 'income' : 'expense',
@@ -189,13 +193,15 @@ export default function TransactionDetectedModal({
         icon: 'tag',
         category_type: transaction.type === 'credit' ? 'income' : 'expense'
       });
-      
+
       setLocalCategories(prev => [...prev, newCat]);
       setSelectedCategoryId(newCat.id);
       setSelectedSubCategoryId('');
       setNewCategoryName('');
       setShowCreateCategory(false);
       setShowCategoryModal(false);
+      // Propagate to parent context so category persists
+      onCategoryCreated?.(newCat);
     } catch (error) {
       console.error(error);
       Alert.alert('Error', 'Failed to create category');
@@ -222,6 +228,8 @@ export default function TransactionDetectedModal({
       setNewSubcategoryName('');
       setShowCreateSubcategory(false);
       setShowSubCategoryModal(false);
+      // Propagate to parent context so subcategory persists
+      onSubCategoryCreated?.(newSub);
     } catch (error) {
       console.error(error);
       Alert.alert('Error', 'Failed to create sub-category');
@@ -232,16 +240,18 @@ export default function TransactionDetectedModal({
 
   const handleDeleteSubcategory = (sub: UserCategory) => {
     Alert.alert('Delete', `Delete "${sub.name}"?`, [
-       { text: 'Cancel', style: 'cancel' },
-       { text: 'Delete', style: 'destructive', onPress: async () => {
-         try {
-           await deleteUserCategory(sub.id);
-           setLocalSubCategories(prev => prev.filter(c => c.id !== sub.id));
-           if (selectedSubCategoryId === sub.id) setSelectedSubCategoryId('');
-         } catch { Alert.alert('Error', 'Cannot delete'); }
-       }},
-     ]);
-   };
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            await deleteUserCategory(sub.id);
+            setLocalSubCategories(prev => prev.filter(c => c.id !== sub.id));
+            if (selectedSubCategoryId === sub.id) setSelectedSubCategoryId('');
+          } catch { Alert.alert('Error', 'Cannot delete'); }
+        }
+      },
+    ]);
+  };
 
   if (!transaction) return null;
 
@@ -249,7 +259,7 @@ export default function TransactionDetectedModal({
   const filteredCategories = localCategories.filter(
     c => c.category_type === (isCredit ? 'income' : 'expense')
   );
-  
+
   const filteredSubCategories = localSubCategories.filter(
     s => s.category_id === selectedCategoryId
   );
@@ -268,7 +278,7 @@ export default function TransactionDetectedModal({
     >
       <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
         <TouchableOpacity style={styles.overlayTouch} activeOpacity={1} />
-        
+
         <Animated.View style={[styles.modalContainer, { transform: [{ translateY: slideAnim }] }]}>
           {/* Header with gradient */}
           <LinearGradient
@@ -280,13 +290,13 @@ export default function TransactionDetectedModal({
             {/* Decorative circles */}
             <View style={[styles.decorCircle1, { backgroundColor: isCredit ? Colors.success + '20' : Colors.error + '20' }]} />
             <View style={[styles.decorCircle2, { backgroundColor: Colors.goldLight }]} />
-            
+
             <View style={styles.headerContent}>
               <View style={[styles.transactionBadge, { backgroundColor: isCredit ? Colors.success : Colors.error }]}>
-                <Feather 
-                  name={isCredit ? 'arrow-down-left' : 'arrow-up-right'} 
-                  size={16} 
-                  color="#FFF" 
+                <Feather
+                  name={isCredit ? 'arrow-down-left' : 'arrow-up-right'}
+                  size={16}
+                  color="#FFF"
                 />
               </View>
               <Text style={styles.headerTitle}>
@@ -299,87 +309,87 @@ export default function TransactionDetectedModal({
           </LinearGradient>
 
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flexShrink: 1 }}>
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {/* Amount Display */}
-            <View style={[styles.amountCard, { borderColor: isCredit ? Colors.success : Colors.error }]}>
-              <Text style={styles.amountLabel}>Amount</Text>
-              <Text style={[styles.amountValue, { color: isCredit ? Colors.success : Colors.error }]}>
-                {formatTransactionAmount(amount, transaction.type as 'debit' | 'credit')}
-              </Text>
-              {transaction.accountLast4 && (
-                <Text style={styles.accountInfo}>
-                  Account ending ••••{transaction.accountLast4}
+            <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Amount Display */}
+              <View style={[styles.amountCard, { borderColor: isCredit ? Colors.success : Colors.error }]}>
+                <Text style={styles.amountLabel}>Amount</Text>
+                <Text style={[styles.amountValue, { color: isCredit ? Colors.success : Colors.error }]}>
+                  {formatTransactionAmount(amount, transaction.type as 'debit' | 'credit')}
                 </Text>
-              )}
-            </View>
+                {transaction.accountLast4 && (
+                  <Text style={styles.accountInfo}>
+                    Account ending ••••{transaction.accountLast4}
+                  </Text>
+                )}
+              </View>
 
-            {/* Category Dropdown */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Category</Text>
-              <TouchableOpacity style={styles.dropdown} onPress={() => setShowCategoryModal(true)}>
-                <View style={[styles.dropdownIcon, { backgroundColor: (selectedCategory?.color || '#6B7280') + '20' }]}>
-                  <Feather name={isUserCategory ? 'tag' : (getValidIconName(CategoryIcons[selectedCategory?.name || ''] || 'package'))} size={16} color={selectedCategory?.color || '#6B7280'} />
-                </View>
-                <Text style={styles.dropdownText}>{selectedCategory?.name || 'Select Category'}</Text>
-                {isUserCategory && <View style={styles.customBadge}><Text style={styles.customBadgeText}>Custom</Text></View>}
-                <Feather name="chevron-right" size={18} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Sub-Category Dropdown */}
-            {(selectedCategory) && (
+              {/* Category Dropdown */}
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Sub-Category {filteredSubCategories.length === 0 && '(Optional)'}</Text>
-                <TouchableOpacity style={styles.dropdown} onPress={() => setShowSubCategoryModal(true)}>
+                <Text style={styles.sectionTitle}>Category</Text>
+                <TouchableOpacity style={styles.dropdown} onPress={() => setShowCategoryModal(true)}>
                   <View style={[styles.dropdownIcon, { backgroundColor: (selectedCategory?.color || '#6B7280') + '20' }]}>
-                    <Feather name="layers" size={16} color={selectedCategory?.color || '#6B7280'} />
+                    <Feather name={isUserCategory ? 'tag' : (getValidIconName(CategoryIcons[selectedCategory?.name || ''] || 'package'))} size={16} color={selectedCategory?.color || '#6B7280'} />
                   </View>
-                  <Text style={styles.dropdownText}>{selectedSub?.name || 'Select or Create'}</Text>
+                  <Text style={styles.dropdownText}>{selectedCategory?.name || 'Select Category'}</Text>
+                  {isUserCategory && <View style={styles.customBadge}><Text style={styles.customBadgeText}>Custom</Text></View>}
                   <Feather name="chevron-right" size={18} color={Colors.textSecondary} />
                 </TouchableOpacity>
               </View>
-            )}
 
-            {/* Payment Method Selection */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Payment Method</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
-                {paymentMethods.map((method) => {
-                  const isSelected = selectedPaymentMethodId === method.id;
-                  return (
-                    <TouchableOpacity
-                      key={method.id}
-                      style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
-                      onPress={() => setSelectedPaymentMethodId(method.id)}
-                    >
-                      <Feather name={getValidIconName(method.icon || 'credit-card')} size={14} color={isSelected ? Colors.primary : Colors.textSecondary} />
-                      <Text style={[styles.categoryText, isSelected && styles.categoryTextSelected]}>
-                        {method.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
+              {/* Sub-Category Dropdown */}
+              {(selectedCategory) && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Sub-Category {filteredSubCategories.length === 0 && '(Optional)'}</Text>
+                  <TouchableOpacity style={styles.dropdown} onPress={() => setShowSubCategoryModal(true)}>
+                    <View style={[styles.dropdownIcon, { backgroundColor: (selectedCategory?.color || '#6B7280') + '20' }]}>
+                      <Feather name="layers" size={16} color={selectedCategory?.color || '#6B7280'} />
+                    </View>
+                    <Text style={styles.dropdownText}>{selectedSub?.name || 'Select or Create'}</Text>
+                    <Feather name="chevron-right" size={18} color={Colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              )}
 
-            {/* Note Input */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Note</Text>
-              <TextInput
-                style={styles.noteInput}
-                value={note}
-                onChangeText={setNote}
-                placeholder="Add a note..."
-                placeholderTextColor={Colors.textMuted}
-                multiline
-              />
-            </View>
-          </ScrollView>
+              {/* Payment Method Selection */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Payment Method</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
+                  {paymentMethods.map((method) => {
+                    const isSelected = selectedPaymentMethodId === method.id;
+                    return (
+                      <TouchableOpacity
+                        key={method.id}
+                        style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
+                        onPress={() => setSelectedPaymentMethodId(method.id)}
+                      >
+                        <Feather name={getValidIconName(method.icon || 'credit-card')} size={14} color={isSelected ? Colors.primary : Colors.textSecondary} />
+                        <Text style={[styles.categoryText, isSelected && styles.categoryTextSelected]}>
+                          {method.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Note Input */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Note</Text>
+                <TextInput
+                  style={styles.noteInput}
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Add a note..."
+                  placeholderTextColor={Colors.textMuted}
+                  multiline
+                />
+              </View>
+            </ScrollView>
           </KeyboardAvoidingView>
 
           {/* Action Buttons */}
           <View style={styles.actions}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.saveButton, (!selectedCategoryId || !selectedPaymentMethodId) && styles.saveButtonDisabled]}
               onPress={handleSave}
               disabled={!selectedCategoryId || !selectedPaymentMethodId}
@@ -427,35 +437,35 @@ export default function TransactionDetectedModal({
               </ScrollView>
               <View style={styles.bottomAction}>
                 <TouchableOpacity style={[styles.createNewBtn, isCredit && styles.createNewBtnIncome]} onPress={() => setShowCreateCategory(true)}>
-                   <Feather name="plus" size={18} color="#FFF" />
-                   <Text style={styles.createNewBtnText}>Create New Category</Text>
+                  <Feather name="plus" size={18} color="#FFF" />
+                  <Text style={styles.createNewBtnText}>Create New Category</Text>
                 </TouchableOpacity>
-             </View>
+              </View>
             </>
           ) : (
-             <KeyboardAvoidingView style={styles.createForm} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-               <Text style={styles.createFormTitle}>Create {isCredit ? 'Income' : 'Expense'} Category</Text>
-               <TextInput
-                 style={styles.createFormInput}
-                 placeholder="Enter category name..."
-                 placeholderTextColor={Colors.textMuted}
-                 value={newCategoryName}
-                 onChangeText={setNewCategoryName}
-                 autoFocus
-               />
-               <View style={styles.createFormActions}>
-                 <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowCreateCategory(false); setNewCategoryName(''); }}>
-                   <Text style={styles.cancelBtnText}>Cancel</Text>
-                 </TouchableOpacity>
-                 <TouchableOpacity 
-                   style={[styles.confirmBtn, (!newCategoryName.trim() || isCreating) && styles.confirmBtnDisabled, isCredit && styles.createNewBtnIncome]} 
-                   onPress={handleCreateNewCategory}
-                   disabled={!newCategoryName.trim() || isCreating}
-                 >
-                   {isCreating ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.confirmBtnText}>Create</Text>}
-                 </TouchableOpacity>
-               </View>
-             </KeyboardAvoidingView>
+            <KeyboardAvoidingView style={styles.createForm} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+              <Text style={styles.createFormTitle}>Create {isCredit ? 'Income' : 'Expense'} Category</Text>
+              <TextInput
+                style={styles.createFormInput}
+                placeholder="Enter category name..."
+                placeholderTextColor={Colors.textMuted}
+                value={newCategoryName}
+                onChangeText={setNewCategoryName}
+                autoFocus
+              />
+              <View style={styles.createFormActions}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowCreateCategory(false); setNewCategoryName(''); }}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.confirmBtn, (!newCategoryName.trim() || isCreating) && styles.confirmBtnDisabled, isCredit && styles.createNewBtnIncome]}
+                  onPress={handleCreateNewCategory}
+                  disabled={!newCategoryName.trim() || isCreating}
+                >
+                  {isCreating ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.confirmBtnText}>Create</Text>}
+                </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
           )}
         </SafeAreaView>
       </Modal>
@@ -500,7 +510,7 @@ export default function TransactionDetectedModal({
                     {selectedSubCategoryId === sub.id && <Feather name="check" size={18} color={isCredit ? Colors.success : Colors.primary} />}
                   </TouchableOpacity>
                 ))}
-                 {filteredSubCategories.length === 0 && (
+                {filteredSubCategories.length === 0 && (
                   <View style={styles.emptyState}>
                     <Feather name="layers" size={40} color={Colors.textMuted} />
                     <Text style={styles.emptyStateText}>No subcategories yet</Text>
@@ -509,36 +519,36 @@ export default function TransactionDetectedModal({
                 {filteredSubCategories.length > 0 && <Text style={styles.deleteHint}>Long-press to delete</Text>}
               </ScrollView>
               <View style={styles.bottomAction}>
-                 <TouchableOpacity style={[styles.createNewBtn, isCredit && styles.createNewBtnIncome]} onPress={() => setShowCreateSubcategory(true)}>
-                    <Feather name="plus" size={18} color="#FFF" />
-                    <Text style={styles.createNewBtnText}>Create New Subcategory</Text>
-                 </TouchableOpacity>
+                <TouchableOpacity style={[styles.createNewBtn, isCredit && styles.createNewBtnIncome]} onPress={() => setShowCreateSubcategory(true)}>
+                  <Feather name="plus" size={18} color="#FFF" />
+                  <Text style={styles.createNewBtnText}>Create New Subcategory</Text>
+                </TouchableOpacity>
               </View>
             </>
           ) : (
             <KeyboardAvoidingView style={styles.createForm} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-               <Text style={styles.createFormTitle}>Subcategory for {selectedCategory?.name}</Text>
-               <TextInput
-                 style={styles.createFormInput}
-                 placeholder="e.g., Monthly, Bonus..."
-                 placeholderTextColor={Colors.textMuted}
-                 value={newSubcategoryName}
-                 onChangeText={setNewSubcategoryName}
-                 autoFocus
-               />
-               <View style={styles.createFormActions}>
-                 <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowCreateSubcategory(false); setNewSubcategoryName(''); }}>
-                   <Text style={styles.cancelBtnText}>Cancel</Text>
-                 </TouchableOpacity>
-                 <TouchableOpacity 
-                   style={[styles.confirmBtn, (!newSubcategoryName.trim() || isCreating) && styles.confirmBtnDisabled, isCredit && styles.createNewBtnIncome]} 
-                   onPress={handleCreateNewSubCategory}
-                   disabled={!newSubcategoryName.trim() || isCreating}
-                 >
-                   {isCreating ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.confirmBtnText}>Create</Text>}
-                 </TouchableOpacity>
-               </View>
-             </KeyboardAvoidingView>
+              <Text style={styles.createFormTitle}>Subcategory for {selectedCategory?.name}</Text>
+              <TextInput
+                style={styles.createFormInput}
+                placeholder="e.g., Monthly, Bonus..."
+                placeholderTextColor={Colors.textMuted}
+                value={newSubcategoryName}
+                onChangeText={setNewSubcategoryName}
+                autoFocus
+              />
+              <View style={styles.createFormActions}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowCreateSubcategory(false); setNewSubcategoryName(''); }}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.confirmBtn, (!newSubcategoryName.trim() || isCreating) && styles.confirmBtnDisabled, isCredit && styles.createNewBtnIncome]}
+                  onPress={handleCreateNewSubCategory}
+                  disabled={!newSubcategoryName.trim() || isCreating}
+                >
+                  {isCreating ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.confirmBtnText}>Create</Text>}
+                </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
           )}
         </SafeAreaView>
       </Modal>
@@ -654,13 +664,13 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: 10,
   },
-  
+
   // Dropdown Style (Matching add-expense)
-  dropdown: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: Colors.card, 
-    borderRadius: 12, 
+  dropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.card,
+    borderRadius: 12,
     padding: 12,
     borderWidth: 1,
     borderColor: Colors.border,
