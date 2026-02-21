@@ -1,7 +1,7 @@
 // Use your computer's IP address for local development (e.g., 192.168.1.x)
 // This is required because the Android emulator cannot access 'localhost' directly
 // For production, this will use the Vercel URL
-const API_URL = 'http://192.168.31.183:3001';
+const API_URL = 'http://192.168.31.169:3000';
 
 // Database types
 export interface User {
@@ -364,4 +364,64 @@ export async function getAvailableMonths(userId: string): Promise<AvailableMonth
     `/api/stats/months?userId=${userId}`
   );
   return data.months;
+}
+
+// ====================
+// BUDGETS & SETTINGS
+// ====================
+
+export interface UserPreferences {
+  user_id: string;
+  daily_limit: number | null;
+  monthly_limit: number | null;
+  savings_goal: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Budget {
+  id: string;
+  user_id: string;
+  category_id: string | null;
+  user_category_id: string | null;
+  amount: number;
+  created_at: string;
+  updated_at: string;
+  category?: Category;
+  user_category?: UserCategory;
+}
+
+export async function getUserPreferences(userId: string): Promise<UserPreferences | null> {
+  const data = await apiCall<{ preferences: UserPreferences | null }>(`/api/user-preferences?user_id=${userId}`);
+  return data.preferences;
+}
+
+export async function updateUserPreferences(preferences: Partial<UserPreferences> & { user_id: string }): Promise<UserPreferences> {
+  const data = await apiCall<{ preferences: UserPreferences }>('/api/user-preferences', {
+    method: 'POST',
+    body: JSON.stringify(preferences),
+  });
+  return data.preferences;
+}
+
+export async function getBudgets(userId: string): Promise<Budget[]> {
+  const data = await apiCall<{ budgets: Budget[] }>(`/api/budgets?user_id=${userId}`);
+  return data.budgets;
+}
+
+export async function saveBudget(budget: { id?: string; user_id: string; category_id?: string; user_category_id?: string; amount: number }): Promise<Budget> {
+  const data = await apiCall<{ budget: Budget }>('/api/budgets', {
+    method: 'POST',
+    body: JSON.stringify(budget),
+  });
+  return data.budget;
+}
+
+export async function deleteBudget(budgetId: string): Promise<void> {
+  await apiCall(`/api/budgets?id=${budgetId}`, { method: 'DELETE' });
+}
+
+export async function getBudgetInsights(userId: string): Promise<string | null> {
+  const data = await apiCall<{ insights?: string }>(`/api/insights/budget?user_id=${userId}`);
+  return data.insights || null;
 }

@@ -180,6 +180,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="budgets"
+        options={{
+          title: 'Budgets',
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <AnimatedTabIcon name="target" color={color} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="chat"
         options={{
           title: 'Chat',
