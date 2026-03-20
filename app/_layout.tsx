@@ -37,15 +37,15 @@ const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 // Custom theme for expense tracker
 const ExpenseTrackerTheme = {
-  ...DarkTheme, // Keeping DarkTheme base for navigation structure but overriding colors
+  ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    primary: '#0C6B58', // Colors.primary
-    background: '#FFFFFF', // Colors.background
-    card: '#FFFFFF', // Colors.card
-    text: '#1A1D29', // Colors.textPrimary
-    border: '#E8EAED', // Colors.border
-    notification: '#0C6B58', // Colors.primary
+    primary: '#0C6B58',
+    background: '#000000',
+    card: '#111111',
+    text: '#FFFFFF',
+    border: '#222222',
+    notification: '#0C6B58',
   },
 };
 
@@ -170,7 +170,7 @@ export default function RootLayout() {
           <SMSTransactionProvider>
             <AuthLayout />
           </SMSTransactionProvider>
-          <StatusBar style="dark" />
+          <StatusBar style="light" />
         </ThemeProvider>
       </ClerkProvider>
     </SafeAreaProvider>
@@ -182,6 +182,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF', // Colors.background
+    backgroundColor: '#000000',
   },
 });

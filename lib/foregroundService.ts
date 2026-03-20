@@ -1,7 +1,7 @@
 // Foreground Service Manager for SMS Detection using Notifee
 // Keeps the app alive in background to detect SMS messages
 
-import { Platform, Linking, DeviceEventEmitter } from 'react-native';
+import { Platform, DeviceEventEmitter } from 'react-native';
 import notifee, { AndroidImportance, AndroidCategory, AndroidVisibility } from '@notifee/react-native';
 import { startSMSListener, stopSMSListener, SMS_TRANSACTION_EVENT } from './smsReader';
 import { addTransactionToQueue } from './transactionQueue';
@@ -62,11 +62,10 @@ export function isForegroundServiceRunning(): boolean {
  */
 const onTransaction = async (transaction: any) => {
   // Deduplication using robust ID
-  // Note: Sender + Amount + Timestamp is usually unique enough
   const resultTimestamp = transaction.timestamp || Date.now();
   const transactionHash = `${transaction.senderNumber}-${transaction.amount}-${resultTimestamp}`;
 
-  // Deduplication: Ignore if same transaction hash seen recently (or ever, in this session)
+  // Deduplication: Ignore if same transaction hash seen recently in this session
   if (lastTransactionHash === transactionHash) {
     log('Ignoring duplicate transaction:', transactionHash);
     return;
@@ -77,6 +76,7 @@ const onTransaction = async (transaction: any) => {
   log('Background transaction detected (via Event):', transaction);
   
   // PERSIST TO QUEUE IMMEDIATELY
+  // The queue has its own dedup check as a secondary failsafe
   try {
      await addTransactionToQueue(transaction);
      log('Transaction saved to persistent queue');
@@ -84,28 +84,21 @@ const onTransaction = async (transaction: any) => {
      log('Failed to save to queue:', queueError);
   }
 
-  // Attempt to open the app directly via Deep Link using Intent
-  const deepLinkUrl = `expensetrackerapp://?action=transaction&data=${encodeURIComponent(JSON.stringify(transaction))}`;
-  
-  try {
-    if (Platform.OS === 'android') {
-       // ... intent logic if needed ...
-    } 
-    await Linking.openURL(deepLinkUrl);
-    log('Direct launch command sent successfully');
-  } catch (err) {
-       // ...
-  }
-  
-  // Show a persistent high-priority notification
+  // NOTE: Deep link removed — it caused the same transaction to be added to the queue
+  // a second time (once via deep link listener, once via notification tap).
+  // The notification below brings the user to the app and triggers processQueue via
+  // the onForegroundEvent PRESS handler, which just calls processQueue (not add-to-queue).
+
+  // Show a persistent high-priority notification to alert the user
   try {
     await notifee.displayNotification({
       id: 'new_transaction_alert', 
       title: '💸 New Expense Detected',
-      body: `₹${transaction.amount} at ${transaction.merchant || transaction.bankName}. Tap to add to queue.`,
+      body: `₹${transaction.amount} at ${transaction.merchant || transaction.bankName}. Tap to review.`,
       data: {
-        transaction: JSON.stringify(transaction),
         type: 'new_transaction'
+        // NOTE: transaction data intentionally NOT included here to prevent
+        // re-adding to queue on notification tap. The queue already has it.
       },
       android: {
         channelId: 'transactions',
@@ -121,8 +114,8 @@ const onTransaction = async (transaction: any) => {
         sound: 'default',
         category: AndroidCategory.ALARM,
         visibility: AndroidVisibility.PUBLIC,
-        ongoing: true, // User cannot swipe away
-        autoCancel: false, // Notification stays until explicitly removed
+        ongoing: true,
+        autoCancel: false,
         vibrationPattern: [300, 500],
         lights: ['#7C3AED', 300, 600],
       },
@@ -239,10 +232,10 @@ export async function startSMSForegroundService(): Promise<boolean> {
     isServiceRunning = true;
     log('✅ Foreground service started successfully');
 
-    // CRITICAL: Manually start the listener as well. 
-    // This ensures that even if the Foreground Task callback doesn't fire (due to reload racing),
-    // we still have the listener active in the current JS context.
-    await startTransactionListener();
+    // NOTE: startTransactionListener() is NOT called here explicitly.
+    // It is already called inside the registerForegroundService callback above.
+    // Calling it twice was registering two DeviceEventEmitter listeners,
+    // causing every SMS to fire onTransaction twice.
 
     return true;
   } catch (error) {

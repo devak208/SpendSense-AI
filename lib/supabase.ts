@@ -1,7 +1,7 @@
 // Use your computer's IP address for local development (e.g., 192.168.1.x)
 // This is required because the Android emulator cannot access 'localhost' directly
 // For production, this will use the Vercel URL
-const API_URL = 'http://192.168.31.169:3000';
+const API_URL = 'http://172.22.223.84:3000';
 
 // Database types
 export interface User {

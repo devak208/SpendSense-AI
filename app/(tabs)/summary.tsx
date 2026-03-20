@@ -189,7 +189,7 @@ const BarChart = ({ data, selectedIndex }: { data: MonthData[]; selectedIndex: n
         {data.map((item, index) => {
           const isSelected = selectedIndex === index;
           return (
-            <View key={item.label} style={styles.barWrapper}>
+            <View key={`${item.year}-${item.month}-${index}`} style={styles.barWrapper}>
               <Text style={styles.barValue}>
                 {item.totalSpent > 0 ? `₹${Math.round(item.totalSpent / 1000)}k` : '-'}
               </Text>

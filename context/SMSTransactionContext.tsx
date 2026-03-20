@@ -78,7 +78,10 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
 
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
-  // Renamed from pendingTransaction for clarity, now pulls from queue
+  // Ref mirrors modalVisible for stale-closure-free reads inside callbacks
+  const modalVisibleRef = useRef(false);
+  // Mutex: prevents concurrent processQueue calls from both opening the modal
+  const isProcessingQueueRef = useRef(false);
   const [currentTransaction, setCurrentTransaction] = useState<QueuedTransaction | null>(null);
 
   // Data for modal
@@ -138,42 +141,47 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
 
   // PROCESS QUEUE: Check if there are items and show the first one
   const processQueue = useCallback(async () => {
-    // If modal is already showing, don't interrupt
-    if (modalVisible) return;
+    // Use the ref (not the state) to get the true current value — avoids stale closure
+    if (modalVisibleRef.current) return;
+    // Mutex: only one invocation runs at a time
+    if (isProcessingQueueRef.current) return;
+    isProcessingQueueRef.current = true;
 
-    const queue = await getPendingTransactions();
-    if (queue.length > 0) {
-      console.log('[SMSContext] Processing queue. Items pending:', queue.length);
+    try {
+      const queue = await getPendingTransactions();
+      if (queue.length > 0) {
+        console.log('[SMSContext] Processing queue. Items pending:', queue.length);
 
-      // Refresh categories before showing modal to get any newly created ones
-      if (dbUserId) {
-        try {
-          const [cats, userCats] = await Promise.all([
-            getCategories(dbUserId),
-            getUserCategories(dbUserId),
-          ]);
-          setCategories(cats);
-          setSubCategories(userCats.all || []);
-        } catch (e) {
-          console.error('[SMSContext] Error refreshing categories:', e);
+        // Refresh categories before showing modal to get any newly created ones
+        if (dbUserId) {
+          try {
+            const [cats, userCats] = await Promise.all([
+              getCategories(dbUserId),
+              getUserCategories(dbUserId),
+            ]);
+            setCategories(cats);
+            setSubCategories(userCats.all || []);
+          } catch (e) {
+            console.error('[SMSContext] Error refreshing categories:', e);
+          }
         }
-      }
 
-      const nextItem = queue[0];
-      setCurrentTransaction(nextItem);
-      setModalVisible(true);
-    } else {
-      // Queue empty
+        const nextItem = queue[0];
+        setCurrentTransaction(nextItem);
+        modalVisibleRef.current = true;
+        setModalVisible(true);
+      }
+    } finally {
+      isProcessingQueueRef.current = false;
     }
-  }, [modalVisible, dbUserId]);
+  // dbUserId is the only true dep — modalVisible is now read via ref
+  }, [dbUserId]);
 
   // Handle detected transaction (from SMS or Deep Link)
   const handleTransactionDetected = useCallback(async (transaction: ParsedTransaction) => {
     console.log('[SMSContext] New transaction detected. Adding to queue:', transaction);
-
-    // Add to persistent queue
+    // Add to persistent queue (has internal dedup)
     await addTransactionToQueue(transaction);
-
     // Try to process immediately
     await processQueue();
   }, [processQueue]);
@@ -181,9 +189,11 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
   // Monitor queue when modal closes or app wakes
   useEffect(() => {
     if (!modalVisible) {
+      modalVisibleRef.current = false;
       processQueue();
     }
-  }, [modalVisible, processQueue]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalVisible]); // processQueue intentionally excluded — it's stable and reads via ref
 
   // Also check queue on mount/auth load
   useEffect(() => {
@@ -192,54 +202,37 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
     }
   }, [isSignedIn, hasPermission, processQueue]);
 
-  // Handle Deep Links (triggered by ForegroundService)
+  // Handle Deep Links (legacy — kept for cold-start fallback but no longer adds to queue)
   useEffect(() => {
     const handleDeepLink = (event: { url: string }) => {
       const { url } = event;
-      // Check for transaction action
+      // Only process transaction action deep links
       if (url && (url.includes('action=transaction') || url.includes('data='))) {
-        console.log('[SMSContext] Deep link received:', url);
-        try {
-          // Extract data param
-          const match = url.match(/data=([^&]+)/);
-          if (match && match[1]) {
-            const dataStr = match[1];
-            // Single decode is usually sufficient if we encoded once
-            const decoded = decodeURIComponent(dataStr);
-            console.log('[SMSContext] Decoded deep link data:', decoded.substring(0, 50) + '...');
-            const transaction = JSON.parse(decoded);
-            handleTransactionDetected(transaction);
-          }
-        } catch (e) {
-          console.error('[SMSContext] Error parsing deep link data:', e);
-        }
+        console.log('[SMSContext] Deep link received — triggering processQueue (transaction already in queue from service)');
+        // The foreground service already added this transaction to the queue.
+        // We just need to process the queue, NOT add it again.
+        processQueue();
       }
     };
 
-    // Listen for incoming links
     const subscription = Linking.addEventListener('url', handleDeepLink);
 
     // Check initial URL (Cold start from Deep Link)
     Linking.getInitialURL().then((url) => {
-      if (url) {
-        console.log('[SMSContext] App started with deep link');
-        handleDeepLink({ url });
+      if (url && (url.includes('action=transaction') || url.includes('data='))) {
+        console.log('[SMSContext] App started with deep link — processing queue');
+        // Small delay to allow app to fully initialize before showing modal
+        setTimeout(() => processQueue(), 1000);
       }
     });
 
     return () => {
       subscription.remove();
     };
-  }, [handleTransactionDetected]);
+  }, [processQueue]);
 
   // Ref to track if initial notification was processed to prevent loops
   const initialNotificationProcessed = useRef(false);
-
-  // Keep latest handler in ref to access inside stable effects
-  const handleTransactionDetectedRef = useRef(handleTransactionDetected);
-  useEffect(() => {
-    handleTransactionDetectedRef.current = handleTransactionDetected;
-  }, [handleTransactionDetected]);
 
   // Handle notification interactions (foreground & background press)
   useEffect(() => {
@@ -247,42 +240,26 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
     if (!initialNotificationProcessed.current) {
       notifee.getInitialNotification().then(initialNotification => {
         if (initialNotification?.notification.data?.type === 'new_transaction') {
-          const transactionData = initialNotification.notification.data.transaction;
-          if (typeof transactionData === 'string') {
-            try {
-              const transaction = JSON.parse(transactionData);
-              console.log('[SMSContext] App launched from transaction notification (Initial):', transaction);
-              initialNotificationProcessed.current = true; // Mark as processed
-              // Delay slightly to allow app to initialize
-              setTimeout(() => {
-                handleTransactionDetectedRef.current(transaction);
-              }, 1000);
-            } catch (e) {
-              console.error('Error parsing initial notification data:', e);
-            }
-          }
+          console.log('[SMSContext] App launched from transaction notification (Initial) — processing queue');
+          initialNotificationProcessed.current = true;
+          // Transaction is already in queue from the foreground service.
+          // Just process the queue after a short delay for app init.
+          setTimeout(() => processQueue(), 1000);
         }
       });
     }
 
-    // 2. Handle foreground/background events while app is in memory
+    // 2. Handle foreground/background notification tap
     const unsubscribe = notifee.onForegroundEvent(({ type, detail }) => {
       if (type === EventType.PRESS && detail.notification?.data?.type === 'new_transaction') {
-        const transactionData = detail.notification.data.transaction;
-        if (typeof transactionData === 'string') {
-          try {
-            const transaction = JSON.parse(transactionData);
-            console.log('[SMSContext] Notification tapped (foreground event):', transaction);
-            handleTransactionDetectedRef.current(transaction);
-          } catch (e) {
-            console.error('Error parsing notification data:', e);
-          }
-        }
+        console.log('[SMSContext] Transaction notification tapped — processing queue (not re-adding)');
+        // Transaction is already in queue. Just surface the modal.
+        processQueue();
       }
     });
 
     return unsubscribe;
-  }, []); // Empty dependency array ensures this effect setup (and especially getInitialNotification) runs once
+  }, []); // Empty deps — processQueue is called via ref so no stale closure risk
 
   // Enable SMS detection
   const enableSMSDetection = async (): Promise<boolean> => {
@@ -388,10 +365,10 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
       // Remove from queue and close modal
       await removeTransactionFromQueue(currentTransaction.id);
       await notifee.cancelNotification('new_transaction_alert');
+      modalVisibleRef.current = false;
       setModalVisible(false);
       setCurrentTransaction(null);
-
-      // Process next item will trigger via useEffect when modalVisible becomes false
+      // processQueue for the next item triggers via the modalVisible useEffect
 
     } catch (error) {
       console.error('Error saving transaction:', error);
@@ -402,10 +379,10 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
   // Handle dismiss modal
   const handleDismissModal = async () => {
     if (currentTransaction) {
-      // Remove from queue logic as per user request
       await removeTransactionFromQueue(currentTransaction.id);
     }
     await notifee.cancelNotification('new_transaction_alert');
+    modalVisibleRef.current = false;
     setModalVisible(false);
     setCurrentTransaction(null);
   };

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "upgrading-expo": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "computedHash": "4af4139cea886f6fc268de322772c2955c0016b1c0f43bdc7dc03e71750837b2"
+    }
+  }
+}

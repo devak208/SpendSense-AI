@@ -60,8 +60,8 @@ function AnimatedTabIcon({
   );
 }
 
-// Custom center FAB button component with animation
-function CenterAddButton({ onPress }: { onPress?: (event: GestureResponderEvent) => void }) {
+// Custom bottom-right FAB button component with animation
+function FloatingActionButton({ onPress }: { onPress?: (event: GestureResponderEvent) => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -82,13 +82,13 @@ function CenterAddButton({ onPress }: { onPress?: (event: GestureResponderEvent)
 
   return (
     <TouchableOpacity 
-      style={styles.centerButton} 
+      style={styles.fabContainer} 
       onPress={onPress} 
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       activeOpacity={1}
     >
-      <Animated.View style={[styles.centerButtonInner, { transform: [{ scale: scaleAnim }] }]}>
+      <Animated.View style={[styles.fabInner, { transform: [{ scale: scaleAnim }] }]}>
         <Feather name="plus" size={26} color="#FFFFFF" />
       </Animated.View>
     </TouchableOpacity>
@@ -98,6 +98,7 @@ function CenterAddButton({ onPress }: { onPress?: (event: GestureResponderEvent)
 export default function TabLayout() {
   const { user } = useUser();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (user) {
@@ -120,7 +121,8 @@ export default function TabLayout() {
   };
 
   return (
-    <Tabs
+    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+      <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textMuted,
@@ -172,11 +174,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="add-expense"
         options={{
-          title: '',
-          tabBarIcon: () => null,
-          tabBarButton: (props) => (
-            <CenterAddButton onPress={props.onPress} />
-          ),
+          title: 'Add Expense',
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -215,6 +214,10 @@ export default function TabLayout() {
       <Tabs.Screen name="summary" options={{ href: null }} />
       <Tabs.Screen name="explore" options={{ href: null }} />
     </Tabs>
+    {pathname !== '/add-expense' && (
+      <FloatingActionButton onPress={() => router.push('/add-expense')} />
+    )}
+    </View>
   );
 }
 
@@ -237,22 +240,25 @@ const styles = StyleSheet.create({
   tabBarItem: {
     paddingTop: 4,
   },
-  centerButton: {
-    top: -20,
+  fabContainer: {
+    position: 'absolute',
+    bottom: 105,
+    right: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 1000,
   },
-  centerButtonInner: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+  fabInner: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
-    shadowRadius: 8,
+    shadowRadius: 10,
     elevation: 8,
   },
 });

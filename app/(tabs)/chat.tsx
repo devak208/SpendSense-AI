@@ -74,7 +74,7 @@ export default function ChatScreen() {
   const currentAiResponseId = useRef<string | null>(null);
   const streamInterval = useRef<any>(null);
 
-  const API_URL = 'http://192.168.31.169:3000';
+  const API_URL = 'http://172.22.223.84:3000';
 
   useEffect(() => {
     return () => {
