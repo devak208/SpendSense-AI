@@ -24,7 +24,8 @@ import {
   getUserCategories,
   Category,
   PaymentMethod,
-  UserCategory
+  UserCategory,
+  createDebt
 } from '@/lib/supabase';
 import TransactionDetectedModal from '@/components/TransactionDetectedModal';
 import {
@@ -376,6 +377,42 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
     }
   };
 
+  const handleSaveDebt = async (data: {
+    amount: number;
+    name: string;
+    direction: 'owed' | 'receivable';
+    note: string;
+  }) => {
+    if (!dbUserId || !currentTransaction) return;
+
+    try {
+      let finalNote = data.note || '';
+      if (currentTransaction.merchant || currentTransaction.senderNumber) {
+         finalNote += `\n[Auto-detected by SpendSense via ${currentTransaction.bankName || 'SMS'}]`;
+      }
+
+      await createDebt({
+        user_id: dbUserId,
+        name: data.name,
+        amount: data.amount,
+        direction: data.direction,
+        debt_type: 'other',
+        description: finalNote.trim(),
+      });
+
+      console.log('Debt saved successfully');
+
+      await removeTransactionFromQueue(currentTransaction.id);
+      await notifee.cancelNotification('new_transaction_alert');
+      modalVisibleRef.current = false;
+      setModalVisible(false);
+      setCurrentTransaction(null);
+    } catch (error) {
+      console.error('Error saving debt:', error);
+      Alert.alert('Error', 'Failed to save split. Please try again.');
+    }
+  };
+
   // Handle dismiss modal
   const handleDismissModal = async () => {
     if (currentTransaction) {
@@ -411,6 +448,7 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
         subCategories={subCategories}
         paymentMethods={paymentMethods}
         onSave={handleSaveTransaction}
+        onSaveDebt={handleSaveDebt}
         onDismiss={handleDismissModal}
         onCategoryCreated={(newCat) => setCategories(prev => [...prev, newCat])}
         onSubCategoryCreated={(newSub) => setSubCategories(prev => [...prev, newSub])}

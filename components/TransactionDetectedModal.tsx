@@ -50,6 +50,12 @@ interface TransactionDetectedModalProps {
     paymentMethodId: string;
     note: string;
   }) => void;
+  onSaveDebt?: (data: {
+    amount: number;
+    name: string;
+    direction: 'owed' | 'receivable';
+    note: string;
+  }) => void;
   onDismiss: () => void;
   onCategoryCreated?: (category: Category) => void;
   onSubCategoryCreated?: (subCategory: UserCategory) => void;
@@ -75,6 +81,7 @@ export default function TransactionDetectedModal({
   subCategories,
   paymentMethods,
   onSave,
+  onSaveDebt,
   onDismiss,
   onCategoryCreated,
   onSubCategoryCreated,
@@ -91,6 +98,10 @@ export default function TransactionDetectedModal({
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>('');
   const [note, setNote] = useState('');
   const [amount, setAmount] = useState(0);
+
+  // Split State
+  const [splitDirection, setSplitDirection] = useState<'owed' | 'receivable'>('receivable');
+  const [splitName, setSplitName] = useState('');
 
   // UI State for Modals
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -121,7 +132,14 @@ export default function TransactionDetectedModal({
   useEffect(() => {
     if (visible && transaction) {
       setAmount(transaction.amount);
-      setNote(transaction.bankName ? `${transaction.bankName} transaction` : 'Bank transaction');
+
+      if (transaction.isSplitRequest) {
+        setSplitDirection(transaction.type === 'receivable' ? 'receivable' : 'owed');
+        setSplitName(transaction.merchant || '');
+        setNote(transaction.bankName ? `Split via ${transaction.bankName}` : 'Split');
+      } else {
+        setNote(transaction.bankName ? `${transaction.bankName} transaction` : 'Bank transaction');
+      }
 
       // Set default category based on transaction type
       const relevantCategories = localCategories.filter(
@@ -169,7 +187,25 @@ export default function TransactionDetectedModal({
   }, [visible, transaction, localCategories]); // Depend on localCategories to update defaults if data changes
 
   const handleSave = () => {
-    if (!selectedCategoryId || !selectedPaymentMethodId || !transaction) return;
+    if (!transaction) return;
+
+    if (transaction.isSplitRequest) {
+      if (!splitName.trim()) {
+        Alert.alert('Required', 'Please enter a name for the split.');
+        return;
+      }
+      if (onSaveDebt) {
+        onSaveDebt({
+          amount,
+          name: splitName.trim(),
+          direction: splitDirection,
+          note
+        });
+      }
+      return;
+    }
+
+    if (!selectedCategoryId || !selectedPaymentMethodId) return;
 
     onSave({
       amount,
@@ -180,7 +216,6 @@ export default function TransactionDetectedModal({
       note,
     });
   };
-
   const handleCreateNewCategory = async () => {
     if (!newCategoryName.trim() || !dbUserId || !transaction) return;
     setIsCreating(true);
@@ -323,9 +358,43 @@ export default function TransactionDetectedModal({
                 )}
               </View>
 
-              {/* Category Dropdown */}
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Category</Text>
+              {transaction.isSplitRequest ? (
+                <>
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Person / Merchant</Text>
+                    <TextInput
+                      style={styles.noteInput}
+                      value={splitName}
+                      onChangeText={setSplitName}
+                      placeholder="Name (e.g., John)"
+                      placeholderTextColor={Colors.textMuted}
+                    />
+                  </View>
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Direction</Text>
+                    <View style={styles.directionToggleList}>
+                      <TouchableOpacity
+                        style={[styles.directionChip, splitDirection === 'receivable' && styles.directionChipSelected]}
+                        onPress={() => setSplitDirection('receivable')}
+                      >
+                        <Feather name="arrow-down-left" size={16} color={splitDirection === 'receivable' ? Colors.primary : Colors.textSecondary} />
+                        <Text style={[styles.directionText, splitDirection === 'receivable' && styles.directionTextSelected]}>They Owe Me</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.directionChip, splitDirection === 'owed' && styles.directionChipSelectedOwed]}
+                        onPress={() => setSplitDirection('owed')}
+                      >
+                        <Feather name="arrow-up-right" size={16} color={splitDirection === 'owed' ? Colors.error : Colors.textSecondary} />
+                        <Text style={[styles.directionText, splitDirection === 'owed' && styles.directionTextSelectedOwed]}>I Owe Them</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  {/* Category Dropdown */}
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Category</Text>
                 <TouchableOpacity style={styles.dropdown} onPress={() => setShowCategoryModal(true)}>
                   <View style={[styles.dropdownIcon, { backgroundColor: (selectedCategory?.color || '#6B7280') + '20' }]}>
                     <Feather name={isUserCategory ? 'tag' : (getValidIconName(CategoryIcons[selectedCategory?.name || ''] || 'package'))} size={16} color={selectedCategory?.color || '#6B7280'} />
@@ -371,6 +440,8 @@ export default function TransactionDetectedModal({
                   })}
                 </ScrollView>
               </View>
+              </>
+              )}
 
               {/* Note Input */}
               <View style={styles.section}>
@@ -390,12 +461,18 @@ export default function TransactionDetectedModal({
           {/* Action Buttons */}
           <View style={styles.actions}>
             <TouchableOpacity
-              style={[styles.saveButton, (!selectedCategoryId || !selectedPaymentMethodId) && styles.saveButtonDisabled]}
+              style={[
+                styles.saveButton,
+                (!transaction.isSplitRequest && (!selectedCategoryId || !selectedPaymentMethodId)) && styles.saveButtonDisabled,
+                (transaction.isSplitRequest && !splitName.trim()) && styles.saveButtonDisabled
+              ]}
               onPress={handleSave}
-              disabled={!selectedCategoryId || !selectedPaymentMethodId}
+              disabled={(!transaction.isSplitRequest && (!selectedCategoryId || !selectedPaymentMethodId)) || (transaction.isSplitRequest && !splitName.trim())}
             >
               <Feather name="check" size={18} color="#FFF" />
-              <Text style={styles.saveButtonText}>Save {isCredit ? 'Income' : 'Expense'}</Text>
+              <Text style={styles.saveButtonText}>
+                {transaction.isSplitRequest ? 'Save Debt' : `Save ${isCredit ? 'Income' : 'Expense'}`}
+              </Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -728,6 +805,45 @@ const styles = StyleSheet.create({
   },
   categoryTextSelected: {
     color: Colors.primary,
+    fontWeight: '600',
+  },
+
+  // Direction Chips
+  directionToggleList: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  directionChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 8,
+  },
+  directionChipSelected: {
+    backgroundColor: Colors.primaryMuted,
+    borderColor: Colors.primary,
+  },
+  directionChipSelectedOwed: {
+    backgroundColor: Colors.errorLight,
+    borderColor: Colors.error,
+  },
+  directionText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  directionTextSelected: {
+    color: Colors.primary,
+    fontWeight: '600',
+  },
+  directionTextSelectedOwed: {
+    color: Colors.error,
     fontWeight: '600',
   },
 

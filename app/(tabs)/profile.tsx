@@ -325,7 +325,7 @@ export default function ProfileScreen() {
                   // NOTE: In production, you might want to prompt for phone number if not stored.
                   const mobileNumber = user?.primaryPhoneNumber?.phoneNumber || '9876543210';
 
-                  const API_URL = 'http://172.22.223.84:3000';
+                  const API_URL = 'http://192.168.31.169:3000';
                   const res = await fetch(`${API_URL}/api/setu/consent`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

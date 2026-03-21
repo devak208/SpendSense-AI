@@ -2,7 +2,7 @@
 // Parses Indian bank SMS messages to extract transaction details
 
 export interface ParsedTransaction {
-  type: 'debit' | 'credit' | 'unknown';
+  type: 'debit' | 'credit' | 'owed' | 'receivable' | 'unknown';
   amount: number;
   bankName: string | null;
   accountLast4: string | null;
@@ -11,6 +11,7 @@ export interface ParsedTransaction {
   rawMessage: string;
   senderNumber: string;
   timestamp: Date;
+  isSplitRequest?: boolean;
 }
 
 // Common Indian bank sender IDs

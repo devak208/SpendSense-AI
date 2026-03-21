@@ -53,10 +53,12 @@ import '../lib/notifications'; // Ensure handler and channels are set up
 import * as Notifications from 'expo-notifications';
 import { checkAndRequestAllPermissions } from '@/lib/permissions';
 import { registerSMSBackgroundService } from '@/lib/foregroundService';
+import { registerNotificationListener, requestNotificationPermission } from '@/lib/notificationListener';
 import notifee from '@notifee/react-native';
 
 // Register the background service task
 registerSMSBackgroundService();
+registerNotificationListener();
 
 // Register background event handler to silence warnings and handle actions
 notifee.onBackgroundEvent(async ({ type, detail }) => {
@@ -74,6 +76,7 @@ function AuthLayout() {
   // Initial Permission Check
   useEffect(() => {
     checkAndRequestAllPermissions();
+    requestNotificationPermission();
   }, []);
 
   // Debug: Listen for notifications

@@ -60,6 +60,8 @@ export function isForegroundServiceRunning(): boolean {
  * Logic to handle incoming transactions
  * This is separated so it can be called from Background Task OR Main App
  */
+import { isDuplicateTransaction } from './deduplicator';
+
 const onTransaction = async (transaction: any) => {
   // Deduplication using robust ID
   const resultTimestamp = transaction.timestamp || Date.now();
@@ -68,6 +70,20 @@ const onTransaction = async (transaction: any) => {
   // Deduplication: Ignore if same transaction hash seen recently in this session
   if (lastTransactionHash === transactionHash) {
     log('Ignoring duplicate transaction:', transactionHash);
+    return;
+  }
+  lastTransactionHash = transactionHash;
+
+  // Global Deduplication: Checks against pushes and previous SMS across sessions
+  const isDuplicate = await isDuplicateTransaction(
+    transaction.amount, 
+    resultTimestamp, 
+    'sms', 
+    transaction.senderNumber || 'bank'
+  );
+
+  if (isDuplicate) {
+    log('Dropped transaction (Is identical amount/time as a recent push/sms)');
     return;
   }
 
@@ -180,18 +196,6 @@ export async function startSMSForegroundService(): Promise<boolean> {
   if (Platform.OS !== 'android') {
     log('Foreground service only available on Android');
     return false;
-  }
-
-  // FORCE RESTART checks
-  // If we think it's NOT running (fresh JS load), force stop to ensure clean native state
-  // This helps triggers the registerForegroundService callback again
-  if (!isServiceRunning) {
-    log('Ensuring clean state (Force Stop)...');
-    try {
-      await stopSMSForegroundService();
-    } catch (e) {
-      log('Error during force stop (clean state):', e);
-    }
   }
 
   if (isServiceRunning) {

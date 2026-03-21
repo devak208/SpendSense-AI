@@ -19,6 +19,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "allowBackup": false,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.devak_klm.expensetrackerapp",
@@ -43,6 +44,7 @@
     },
     "plugins": [
       "./plugins/withNotifeeMaven.js",
+      "./plugins/withAndroidNotificationListener.js",
       "expo-router",
       [
         "expo-splash-screen",

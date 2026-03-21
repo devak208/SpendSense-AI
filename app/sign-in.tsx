@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const API_URL = 'http://172.22.223.84:3000';
+const API_URL = 'http://192.168.31.169:3000';
 
 export const useWarmUpBrowser = () => {
   useEffect(() => {
