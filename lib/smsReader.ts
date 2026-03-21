@@ -347,7 +347,7 @@ async function processMessage(
     // Assuming backend is reachable at relative path if proxied, 
     // or we need the full URL from env.
     // We need the backend URL.
-    const API_URL = 'http://192.168.31.169:3000';
+    const API_URL = 'https://spend-sense-ai-backend.vercel.app';
 
     const response = await fetch(`${API_URL}/api/parse-sms`, {
       method: 'POST',
