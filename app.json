@@ -62,10 +62,11 @@
           "icon": "./assets/images/icon.png",
           "color": "#7c3aed"
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-secure-store"
     ],
     "updates": {
-      "url": "https://u.expo.dev/43ef7715-ca03-4571-bfa5-e7358108b1ea",
       "enabled": true,
       "fallbackToCacheTimeout": 0
     },
@@ -76,12 +77,10 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "43ef7715-ca03-4571-bfa5-e7358108b1ea"
+        "projectId": "38fa32fc-5a84-4bbd-992e-7947f9cb7e94"
       }
     },
-    "owner": "devak_klm",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    }
+    "owner": "devak_spend",
+    "runtimeVersion": "1.0.0"
   }
 }
