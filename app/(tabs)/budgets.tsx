@@ -679,5 +679,5 @@ const styles = StyleSheet.create({
 
   saveButton: { backgroundColor: Colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' },
   saveButtonDisabled: { opacity: 0.4 },
-  saveButtonText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  saveButtonText: { color: '#000000', fontSize: 16, fontWeight: '700' },
 });

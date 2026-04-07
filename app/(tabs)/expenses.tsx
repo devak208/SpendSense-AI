@@ -316,7 +316,7 @@ export default function ExpensesScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header with gradient */}
       <LinearGradient
-        colors={[Colors.goldLight, Colors.background]}
+        colors={[Colors.surfaceElevated, Colors.background]}
         style={styles.headerGradient}
       >
         <View style={styles.header}>

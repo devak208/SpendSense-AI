@@ -336,7 +336,7 @@ export default function AddExpenseScreen() {
         >
           {/* Header with Gradient */}
           <LinearGradient
-            colors={isIncome ? [Colors.successLight, Colors.background] : [Colors.cream, Colors.background]}
+            colors={isIncome ? [Colors.success + '20', Colors.background] : [Colors.surfaceElevated, Colors.background]}
             style={styles.headerGradient}
           >
             <View style={styles.header}>
@@ -974,8 +974,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border
   },
   paymentChipSelected: {
-    backgroundColor: Colors.secondary,
-    borderColor: Colors.secondary
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary
   },
   paymentChipIncome: {
     backgroundColor: Colors.success,
@@ -995,9 +995,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.secondary,
-    borderRadius: 10,
-    padding: 14,
+    backgroundColor: Colors.primary,
+    borderRadius: 14,
+    padding: 16,
     gap: 8,
     marginTop: 20
   },
@@ -1005,9 +1005,9 @@ const styles = StyleSheet.create({
     opacity: 0.7
   },
   saveBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFF'
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000000'
   },
   saveBtnChevron: {
     fontSize: 16,
@@ -1087,18 +1087,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.secondary,
-    borderRadius: 10,
-    padding: 14,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    padding: 16,
     gap: 8
   },
   createNewBtnIncome: {
     backgroundColor: Colors.success
   },
   createNewBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFF'
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#000000'
   },
   emptyState: {
     alignItems: 'center',
@@ -1161,9 +1161,9 @@ const styles = StyleSheet.create({
   },
   confirmBtn: {
     flex: 1,
-    padding: 14,
-    borderRadius: 10,
-    backgroundColor: Colors.secondary,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
     alignItems: 'center'
   },
   confirmBtnIncome: {

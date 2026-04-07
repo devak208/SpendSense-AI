@@ -73,10 +73,15 @@ function AuthLayout() {
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
 
-  // Initial Permission Check
+  // Initial Permission Check — sequential to avoid dialog race conditions on first launch
   useEffect(() => {
-    checkAndRequestAllPermissions();
-    requestNotificationPermission();
+    const runPermissions = async () => {
+      // Wait for standard permissions (notifications, SMS, overlay) to fully complete
+      await checkAndRequestAllPermissions();
+      // Then ask for notification listener access (shows alert to open settings)
+      await requestNotificationPermission();
+    };
+    runPermissions();
   }, []);
 
   // Debug: Listen for notifications

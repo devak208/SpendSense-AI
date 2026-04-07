@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const API_URL = 'https://spend-sense-ai-backend.vercel.app';
+import { API_URL } from '@/lib/supabase';
 
 export const useWarmUpBrowser = () => {
   useEffect(() => {
@@ -121,17 +121,23 @@ export default function SignInScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>
-        <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <Feather name="credit-card" size={32} color={Colors.primary} />
+        {/* Logo */}
+        <View style={styles.logoSection}>
+          <View style={styles.logoRing}>
+            <Text style={styles.logoSymbol}>₹</Text>
           </View>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue</Text>
+          <Text style={styles.brandName}>SpendSense AI</Text>
+        </View>
+
+        <View style={styles.headingSection}>
+          <Text style={styles.title}>Welcome back</Text>
+          <Text style={styles.subtitle}>Sign in to continue tracking</Text>
         </View>
 
         <View style={styles.form}>
+          {/* Google */}
           <TouchableOpacity style={styles.googleButton} onPress={handleGoogleSignIn} disabled={loading}>
-            <Feather name="chrome" size={20} color="#FFF" />
+            <Feather name="chrome" size={18} color={Colors.textPrimary} />
             <Text style={styles.googleButtonText}>Continue with Google</Text>
           </TouchableOpacity>
 
@@ -143,18 +149,37 @@ export default function SignInScreen() {
 
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Email</Text>
-            <TextInput style={styles.input} placeholder="your@email.com" placeholderTextColor={Colors.textMuted} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
+            <TextInput
+              style={styles.input}
+              placeholder="your@email.com"
+              placeholderTextColor={Colors.textMuted}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
           </View>
 
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Password</Text>
-            <TextInput style={styles.input} placeholder="Your password" placeholderTextColor={Colors.textMuted} value={password} onChangeText={setPassword} secureTextEntry />
+            <TextInput
+              style={styles.input}
+              placeholder="Your password"
+              placeholderTextColor={Colors.textMuted}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
           </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleSignIn} disabled={loading}>
-            {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Sign In</Text>}
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleSignIn}
+            disabled={loading}
+          >
+            {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.buttonText}>Sign In</Text>}
           </TouchableOpacity>
         </View>
 
@@ -171,56 +196,75 @@ export default function SignInScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  keyboardView: { flex: 1, justifyContent: 'center', padding: 24 },
-  header: { alignItems: 'center', marginBottom: 32 },
-  logoContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
+  keyboardView: { flex: 1, justifyContent: 'center', paddingHorizontal: 24, paddingBottom: 24 },
+
+  // Logo
+  logoSection: { alignItems: 'center', marginBottom: 32 },
+  logoRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: Colors.primaryMuted,
+    borderWidth: 2,
+    borderColor: Colors.primary + '40',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16
+    marginBottom: 12,
   },
-  title: { fontSize: 28, fontWeight: 'bold', color: Colors.textPrimary, marginBottom: 8 },
-  subtitle: { fontSize: 16, color: Colors.textSecondary },
+  logoSymbol: { fontSize: 30, fontWeight: '800', color: Colors.primary },
+  brandName: { fontSize: 18, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 0.5 },
+
+  headingSection: { alignItems: 'center', marginBottom: 32 },
+  title: { fontSize: 28, fontWeight: '800', color: Colors.textPrimary, marginBottom: 8 },
+  subtitle: { fontSize: 15, color: Colors.textSecondary },
+
   form: { gap: 16 },
+
+  // Google button — outlined style on dark
   googleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#4285F4', // Google blue can stay
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: 14,
+    padding: 15,
+    gap: 10,
     borderWidth: 1,
-    borderColor: Colors.border
+    borderColor: Colors.border,
   },
-  googleButtonText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 8 },
+  googleButtonText: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
+
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
   dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
-  dividerText: { color: Colors.textMuted, paddingHorizontal: 16 },
-  inputContainer: { gap: 6 },
-  label: { fontSize: 14, fontWeight: '500', color: Colors.textSecondary },
+  dividerText: { color: Colors.textMuted, paddingHorizontal: 16, fontSize: 13 },
+
+  inputContainer: { gap: 8 },
+  label: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, letterSpacing: 0.3 },
   input: {
-    backgroundColor: Colors.cardHover,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
     color: Colors.textPrimary,
     borderWidth: 1,
-    borderColor: Colors.border
+    borderColor: Colors.border,
   },
-  error: { color: Colors.error, fontSize: 14, textAlign: 'center' },
+
+  error: { color: Colors.error, fontSize: 13, textAlign: 'center' },
+
+  // Primary CTA — solid emerald
   button: {
-    backgroundColor: Colors.secondary, // Using Secondary (Navi Dark) for primary action
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center'
+    backgroundColor: Colors.primary,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 4,
   },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: Colors.textLight, fontSize: 16, fontWeight: '600' },
-  linkText: { color: Colors.primary, fontSize: 14, fontWeight: '500' },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 32 },
+  buttonDisabled: { opacity: 0.5 },
+  buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+
+  linkText: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 28 },
   footerText: { color: Colors.textSecondary, fontSize: 14 },
 });

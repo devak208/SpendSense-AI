@@ -290,10 +290,12 @@ export default function DebtsScreen() {
         result.setDate(result.getDate() + daysUntil);
         if (result <= now) result.setDate(result.getDate() + 7);
         break;
-      case 'monthly':
-        result.setDate(debt.reminder_day_of_month || 1);
+      case 'monthly': {
+        const lastDayOfMonth = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+        result.setDate(Math.min(debt.reminder_day_of_month || 1, lastDayOfMonth));
         if (result <= now) result.setMonth(result.getMonth() + 1);
         break;
+      }
     }
     return result;
   };

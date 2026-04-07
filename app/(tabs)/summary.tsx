@@ -383,7 +383,7 @@ export default function SummaryScreen() {
           <Animated.View style={{ opacity: fadeAnim }}>
             {/* Feature Card - matching home screen */}
             <LinearGradient
-              colors={[Colors.cream, Colors.featureEnd]}
+              colors={[Colors.surfaceElevated, Colors.background]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.featureCard}
@@ -709,7 +709,7 @@ const styles = StyleSheet.create({
   netBalanceHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   netBalanceLabel: { fontSize: 12, fontWeight: '500', color: Colors.textSecondary },
   netBalanceValue: { fontSize: 22, fontWeight: '700' },
-  savingsRateBox: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.7)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  savingsRateBox: { alignItems: 'center', backgroundColor: Colors.card, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
   savingsRateValue: { fontSize: 16, fontWeight: '700' },
   savingsRateLabel: { fontSize: 9, color: Colors.textMuted },
 

@@ -35,7 +35,7 @@ export async function addTransactionToQueue(transaction: ParsedTransaction): Pro
     
     // Check if exactly this transaction is already in queue
     const exists = currentQueue.some(t => 
-      t.timestamp === transaction.timestamp && 
+      new Date(t.timestamp).getTime() === new Date(transaction.timestamp).getTime() && 
       t.amount === transaction.amount && 
       t.senderNumber === transaction.senderNumber
     );

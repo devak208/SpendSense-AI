@@ -1,6 +1,13 @@
 import { Feather } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
+import { API_URL } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system/legacy';
+
+
 import {
   View,
   Text,
@@ -16,20 +23,31 @@ import {
   Dimensions,
   Alert,
   Keyboard,
+  ScrollView,
 } from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth, useUser } from '@clerk/clerk-expo';
-import { LinearGradient } from 'expo-linear-gradient';
+// Removed LinearGradient
 
 import { Colors } from '@/constants/Colors';
 import { getUserByClerkId } from '@/lib/supabase';
+
+type ApprovalData = {
+  title: string;
+  body: string;
+  context: string;
+};
 
 type Message = {
   id: string;
   text: string;
   sender: 'user' | 'ai';
   timestamp: Date;
+  type?: 'text' | 'approval';
+  approvalData?: ApprovalData;
+  approvalResolved?: boolean;
 };
 
 type ChatSession = {
@@ -62,6 +80,9 @@ export default function ChatScreen() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [dbUserId, setDbUserId] = useState<string | null>(null);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -74,12 +95,41 @@ export default function ChatScreen() {
   const currentAiResponseId = useRef<string | null>(null);
   const streamInterval = useRef<any>(null);
 
-  const API_URL = 'https://spend-sense-ai-backend.vercel.app';
+
 
   useEffect(() => {
     return () => {
       if (streamInterval.current) clearInterval(streamInterval.current);
     };
+  }, []);
+
+  // Listen for notification taps and inject the pending action context into chat
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as any;
+      if (data?.pendingActionContext) {
+        // Inject the pending action as a visible AI message so the user sees what was proposed
+        // and the agent has it in context for this session
+        const agentProposalMessage: Message = {
+          id: Date.now().toString(),
+          text: `🔔 **I have a proposal for you:**\n\n${data.pendingActionContext}\n\nShall I go ahead and do this?`,
+          sender: 'ai',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [
+          {
+            id: '1',
+            text: "Hello! I'm your financial assistant. I can help you track expenses, set reminders, or answer questions about your spending. How can I help you today?",
+            sender: 'ai',
+            timestamp: new Date(),
+          },
+          agentProposalMessage,
+        ]);
+        // Auto-populate input with a helpful prompt so the user can quickly confirm
+        setInput('Yes, go ahead');
+      }
+    });
+    return () => subscription.remove();
   }, []);
 
   // Keyboard visibility listener
@@ -239,10 +289,41 @@ export default function ChatScreen() {
       const fullRaw = rawResponse.current;
       if (processedRawIndex.current < fullRaw.length) {
         const newChunk = fullRaw.substring(processedRawIndex.current);
+        
+        // Prevent regex matching from failing if a tag is split across network chunks
+        if (newChunk.includes('*Processing:') && !newChunk.includes('...*')) return;
+        if (newChunk.includes('__APPROVAL__') && !newChunk.includes('__END_APPROVAL__')) return;
+        if (newChunk.includes('✓') && !newChunk.includes('\n')) return;
+
         let textToAdd = newChunk;
 
         const processingRegex = /\*Processing: ([\w\s]+)\.\.\.\*(\n)?/g;
         const completeRegex = /✓ ([\w\s]+)(\n)?/g;
+        // ---- Approval Card Detection ----
+        // Split on approval markers, extract JSON payload, convert to approval message
+        const approvalRegex = /__APPROVAL__(.*?)__END_APPROVAL__\n?/s;
+        const approvalMatch = newChunk.match(approvalRegex);
+        if (approvalMatch) {
+          try {
+            const approvalData: ApprovalData = JSON.parse(approvalMatch[1]);
+            // Strip the marker from the visible text
+            textToAdd = textToAdd.replace(approvalRegex, '');
+            // Create a dedicated approval message bubble
+            const approvalMsgId = `approval-${Date.now()}`;
+            setMessages(prev => [...prev, {
+              id: approvalMsgId,
+              text: '',
+              sender: 'ai',
+              timestamp: new Date(),
+              type: 'approval',
+              approvalData,
+              approvalResolved: false,
+            }]);
+          } catch (e) {
+            // Malformed JSON — strip the marker and continue
+            textToAdd = textToAdd.replace(approvalRegex, '');
+          }
+        }
 
         let match;
         while ((match = processingRegex.exec(newChunk)) !== null) {
@@ -282,17 +363,73 @@ export default function ChatScreen() {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && attachedImages.length === 0) || isLoading || isUploading) return;
+    const text = input.trim();
+    setInput('');
+    sendMessageText(text);
+  };
+
+  const handlePickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 1,
+        base64: false,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+      const uri = result.assets[0].uri;
+      setProcessingStatus('Compressing...');
+
+      let finalUri = uri;
+      let quality = 0.9;
+      const MAX_SIZE = 6 * 1024 * 1024; // 6MB
+
+      // Compression Loop
+      while (true) {
+        const fileInfo = await FileSystem.getInfoAsync(finalUri);
+        if (!fileInfo.exists) break;
+
+        const size = (fileInfo as any).size || 0;
+        console.log(`[Chat] Current image size: ${(size / 1024 / 1024).toFixed(2)}MB`);
+
+        if (size <= MAX_SIZE || quality <= 0.1) break;
+
+        // Compress further
+        const manipResult = await ImageManipulator.manipulateAsync(
+          finalUri,
+          [{ resize: { width: 1600 } }], // Resize to standard high-res
+          { compress: quality, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        finalUri = manipResult.uri;
+        quality -= 0.15;
+      }
+
+      setAttachedImages([...attachedImages, finalUri]);
+    } catch (error) {
+      console.error('[Chat] Image pick error:', error);
+      Alert.alert('Error', 'Failed to process image');
+    } finally {
+      setProcessingStatus(null);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setAttachedImages(attachedImages.filter((_, i) => i !== index));
+  };
+
+  const sendMessageText = async (messageText: string, options?: { isApprovalResponse?: boolean }) => {
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      text: input.trim(),
+      text: messageText,
       sender: 'user',
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    setInput('');
     setIsLoading(true);
     setProcessingStatus(null);
     rawResponse.current = '';
@@ -315,6 +452,23 @@ export default function ChatScreen() {
     startStreamingLoop();
 
     try {
+      // Optional: Upload images if they exist
+      let imageUrls: string[] = [];
+      const currentImages = attachedImages; // Capture current images before clearing
+      setAttachedImages([]); // Clear attached images after sending
+
+      if (currentImages.length > 0) {
+        setIsUploading(true);
+        setProcessingStatus('Uploading images...');
+        
+        imageUrls = await Promise.all(currentImages.map(async (uri) => {
+          const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+          const mimeType = 'image/jpeg';
+          return `data:${mimeType};base64,${base64}`;
+        }));
+      }
+
+      // Using XMLHttpRequest because fetch ReadableStream is not supported in standard React Native
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${API_URL}/api/chat`, true);
       xhr.setRequestHeader('Content-Type', 'application/json');
@@ -325,7 +479,7 @@ export default function ChatScreen() {
         const fullResponse = xhr.responseText;
         const newChunk = fullResponse.substring(xhrProcessedIndex);
         if (newChunk) {
-          rawResponse.current += newChunk;
+          rawResponse.current = fullResponse; // Update the full raw response for the stream loop
         }
         xhrProcessedIndex = fullResponse.length;
       };
@@ -333,6 +487,9 @@ export default function ChatScreen() {
       xhr.onload = () => {
         setIsLoading(false);
         isStreaming.current = false;
+        setIsUploading(false);
+        setProcessingStatus(null);
+        
         if (xhr.status >= 200 && xhr.status < 300) {
           const newSessionId = xhr.getResponseHeader('x-session-id');
           if (newSessionId && !sessionId) {
@@ -352,6 +509,8 @@ export default function ChatScreen() {
       xhr.onerror = () => {
         setIsLoading(false);
         isStreaming.current = false;
+        setIsUploading(false);
+        setProcessingStatus(null);
         const errorResponse: Message = {
           id: (Date.now() + 2).toString(),
           text: "Network error occurred. Please try again.",
@@ -362,15 +521,25 @@ export default function ChatScreen() {
       };
 
       xhr.send(JSON.stringify({
-        message: userMessage.text,
+        message: messageText,
         userId: user?.id || 'anonymous',
-        sessionId: sessionId,
+        sessionId: sessionId || undefined,
+        imageUrls,
       }));
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Chat Error:', error);
+      const errorResponse: Message = {
+        id: (Date.now() + 2).toString(),
+        text: `Error: ${error.message || "An unexpected error occurred."}`,
+        sender: 'ai',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => prev.filter(m => m.id !== aiResponseId).concat(errorResponse));
       setIsLoading(false);
       isStreaming.current = false;
+      setIsUploading(false);
+      setProcessingStatus(null);
     }
   };
 
@@ -378,10 +547,65 @@ export default function ChatScreen() {
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
-  }, [messages, processingStatus]); // Auto-scroll on processing status change too
+  }, [messages, processingStatus]);
+
+  const handleApproval = (approvalMsgId: string, context: string, approved: boolean) => {
+    // Mark the approval message as resolved so buttons disappear
+    setMessages(prev => prev.map(msg =>
+      msg.id === approvalMsgId ? { ...msg, approvalResolved: true } : msg
+    ));
+    // Send the user's decision as a regular chat message
+    const response = approved
+      ? `Yes, go ahead: ${context}`
+      : 'No, please cancel that action.';
+    // Small delay to let state settle, then auto-send
+    setTimeout(() => {
+      sendMessageText(response);
+    }, 150);
+  };
+
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isUser = item.sender === 'user';
+
+    // Render Approval Card
+    if (item.type === 'approval' && item.approvalData) {
+      const { approvalData, approvalResolved, id } = item;
+      return (
+        <View style={styles.approvalCard}>
+          <View style={styles.approvalHeader}>
+            <Feather name="alert-circle" size={18} color="#F59E0B" />
+            <Text style={styles.approvalTitle}>{approvalData.title}</Text>
+          </View>
+          <Text selectable style={styles.approvalBody}>{approvalData.body}</Text>
+          {!approvalResolved ? (
+            <View style={styles.approvalButtons}>
+              <TouchableOpacity
+                style={[styles.approvalBtn, styles.approvalRejectBtn]}
+                onPress={() => handleApproval(id, approvalData.context, false)}
+              >
+                <Feather name="x" size={16} color="#EF4444" />
+                <Text style={styles.approvalRejectText}>Reject</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.approvalBtn, styles.approvalAcceptBtn]}
+                onPress={() => handleApproval(id, approvalData.context, true)}
+              >
+                <Feather name="check" size={16} color="#FFFFFF" />
+                <Text style={styles.approvalAcceptText}>Approve</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={styles.approvalResolvedText}>
+              {item.text.includes('Yes') ? '✓ Approved' : '✗ Rejected'}
+            </Text>
+          )}
+          <Text style={styles.aiTimestamp}>
+            {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        </View>
+      );
+    }
     return (
       <View style={[
         styles.messageContainer,
@@ -398,7 +622,7 @@ export default function ChatScreen() {
           !isUser && { paddingVertical: 8, paddingHorizontal: 12 }
         ]}>
           {isUser ? (
-            <Text style={[styles.messageText, styles.userMessageText]}>
+            <Text selectable style={[styles.messageText, styles.userMessageText]}>
               {item.text}
             </Text>
           ) : (
@@ -476,10 +700,7 @@ export default function ChatScreen() {
         style={styles.keyboardAvoidingView}
       >
         {/* Header */}
-        <LinearGradient
-          colors={[Colors.cream, Colors.background]}
-          style={styles.headerGradient}
-        >
+        <View style={styles.headerContainer}>
           <View style={styles.header}>
             <TouchableOpacity onPress={toggleSidebar} style={styles.headerButton}>
               <Feather name="menu" size={24} color={Colors.textPrimary} />
@@ -501,7 +722,7 @@ export default function ChatScreen() {
               <Feather name="bell" size={20} color={Colors.textPrimary} />
             </TouchableOpacity>
           </View>
-        </LinearGradient>
+        </View>
 
         {/* Quick Prompts */}
         {messages.length <= 1 && (
@@ -540,9 +761,34 @@ export default function ChatScreen() {
           }
         />
 
+        {/* Image Preview Bar */}
+        {attachedImages.length > 0 && (
+          <View style={styles.imagePreviewBar}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.imagePreviewScroll}>
+              {attachedImages.map((uri, index) => (
+                <View key={uri} style={styles.imagePreviewContainer}>
+                  <View style={styles.imagePlaceholder}>
+                    <Feather name="image" size={20} color={Colors.primary} />
+                  </View>
+                  <TouchableOpacity style={styles.removeImageBtn} onPress={() => removeImage(index)}>
+                    <Feather name="x" size={12} color="#FFF" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         {/* Input */}
         <View style={[styles.inputContainer, { paddingBottom: isKeyboardVisible ? 12 : 60 }]}>
           <View style={styles.inputWrapper}>
+            <TouchableOpacity
+              style={styles.attachButton}
+              onPress={handlePickImage}
+              disabled={isLoading || isUploading}
+            >
+              <Feather name="image" size={22} color={attachedImages.length > 0 ? Colors.primary : Colors.textSecondary} />
+            </TouchableOpacity>
             <TextInput
               style={styles.input}
               placeholder="Type a message..."
@@ -552,18 +798,18 @@ export default function ChatScreen() {
               multiline
               maxLength={1000}
             />
+            <TouchableOpacity
+              style={[styles.sendButton, ((!input.trim() && attachedImages.length === 0) || isLoading || isUploading) && styles.sendButtonDisabled]}
+              onPress={sendMessage}
+              disabled={(!input.trim() && attachedImages.length === 0) || isLoading || isUploading}
+            >
+              {isLoading || isUploading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Feather name="arrow-up" size={18} color="#FFF" />
+              )}
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={[styles.sendButton, (!input.trim() || isLoading) && styles.sendButtonDisabled]}
-            onPress={sendMessage}
-            disabled={!input.trim() || isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <Feather name="send" size={18} color="#FFF" />
-            )}
-          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -595,11 +841,7 @@ const styles = StyleSheet.create({
     width: 300,
     backgroundColor: Colors.background,
     zIndex: 999,
-    shadowColor: "#000",
-    shadowOffset: { width: 2, height: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    boxShadow: '2px 0 16px rgba(0,0,0,0.06)',
   },
   sidebarHeader: {
     flexDirection: 'row',
@@ -639,9 +881,13 @@ const styles = StyleSheet.create({
     padding: 4,
   },
 
-  // Header with Gradient
-  headerGradient: {
-    paddingBottom: 12,
+  // Header Container
+  headerContainer: {
+    backgroundColor: Colors.surfaceElevated,
+    boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
   },
   header: {
     flexDirection: 'row',
@@ -708,12 +954,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.card,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 20,
+    borderCurve: 'continuous',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     gap: 6,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.borderLight,
+    boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
   },
   quickPromptText: {
     fontSize: 12,
@@ -741,7 +989,11 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: Colors.primaryMuted,
+    borderCurve: 'continuous',
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
@@ -754,13 +1006,14 @@ const styles = StyleSheet.create({
   },
   userMessageBubble: {
     backgroundColor: Colors.primary,
-    borderBottomRightRadius: 4,
+    borderCurve: 'continuous',
   },
   aiMessageBubble: {
-    backgroundColor: Colors.card,
-    borderBottomLeftRadius: 4,
+    backgroundColor: Colors.surfaceElevated,
+    borderCurve: 'continuous',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.borderLight,
   },
   messageText: {
     fontSize: 14,
@@ -786,40 +1039,45 @@ const styles = StyleSheet.create({
 
   // Input
   inputContainer: {
-    flexDirection: 'row',
     padding: 12,
     paddingBottom: Platform.OS === 'ios' ? 12 : 16,
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.surface,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    alignItems: 'flex-end',
-    gap: 10,
+    borderTopColor: Colors.borderLight,
   },
   inputWrapper: {
-    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
     backgroundColor: Colors.background,
-    borderRadius: 12,
+    borderRadius: 24,
+    borderCurve: 'continuous',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.borderLight,
+    paddingRight: 6,
+    paddingBottom: 4,
+    paddingTop: 4,
   },
   input: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingTop: 12,
+    paddingBottom: 12,
     color: Colors.textPrimary,
     maxHeight: 100,
-    fontSize: 14,
+    fontSize: 15,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: Colors.secondary,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 2,
   },
   sendButtonDisabled: {
     backgroundColor: Colors.border,
-    opacity: 0.6,
+    opacity: 0.5,
   },
   processingContainer: {
     padding: 10,
@@ -833,7 +1091,120 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontStyle: 'italic',
   },
+
+  // ---- Approval Card ----
+  approvalCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.gold,
+    padding: 16,
+    boxShadow: `0 4px 12px ${Colors.goldLight}`,
+    borderCurve: 'continuous',
+  },
+  approvalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  approvalTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.gold,
+    flex: 1,
+  },
+  approvalBody: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  approvalButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  approvalBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  approvalRejectBtn: {
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.error,
+  },
+  approvalAcceptBtn: {
+    backgroundColor: Colors.primary,
+  },
+  approvalRejectText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.error,
+  },
+  approvalAcceptText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#000000',
+  },
+  approvalResolvedText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+
+  imagePreviewBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: Colors.surfaceElevated,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  imagePreviewScroll: {
+    gap: 12,
+    paddingRight: 16,
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    width: 60,
+    height: 60,
+  },
+  imagePlaceholder: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  attachButton: {
+    padding: 12,
+    paddingBottom: 12,
+  },
 });
+
 
 const markdownStyles = StyleSheet.create({
   body: {
@@ -886,7 +1257,7 @@ const markdownStyles = StyleSheet.create({
     fontSize: 13,
   },
   fence: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: Colors.surfaceElevated,
     color: Colors.textPrimary,
     borderRadius: 8,
     padding: 10,
@@ -897,7 +1268,7 @@ const markdownStyles = StyleSheet.create({
     fontSize: 12,
   },
   link: {
-    color: Colors.secondary,
+    color: Colors.primary,
     textDecorationLine: 'underline',
   },
 });

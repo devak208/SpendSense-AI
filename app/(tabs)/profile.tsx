@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '@/constants/Colors';
 
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
-import { updateUserPushToken, getUserByClerkId } from '@/lib/supabase';
+import { updateUserPushToken, getUserByClerkId, API_URL } from '@/lib/supabase';
 import { useSMSTransaction } from '@/context/SMSTransactionContext';
 import * as Notifications from 'expo-notifications';
 import { useEffect, useState, useRef } from 'react';
@@ -325,7 +325,7 @@ export default function ProfileScreen() {
                   // NOTE: In production, you might want to prompt for phone number if not stored.
                   const mobileNumber = user?.primaryPhoneNumber?.phoneNumber || '9876543210';
 
-                  const API_URL = 'https://spend-sense-ai-backend.vercel.app';
+
                   const res = await fetch(`${API_URL}/api/setu/consent`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -536,6 +536,8 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   avatarPlaceholder: {
     width: 56,

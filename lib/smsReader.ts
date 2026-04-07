@@ -3,6 +3,7 @@
 
 import { Platform, DeviceEventEmitter } from 'react-native';
 import { parseBankSMS, ParsedTransaction, extractBankName } from './bankSmsParser';
+import { API_URL } from './supabase';
 
 // Type definitions for the library callback
 type SMSCallback = (status: string, sms: string, error: string) => void;
@@ -347,7 +348,7 @@ async function processMessage(
     // Assuming backend is reachable at relative path if proxied, 
     // or we need the full URL from env.
     // We need the backend URL.
-    const API_URL = 'https://spend-sense-ai-backend.vercel.app';
+
 
     const response = await fetch(`${API_URL}/api/parse-sms`, {
       method: 'POST',

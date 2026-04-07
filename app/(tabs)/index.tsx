@@ -279,7 +279,7 @@ export default function HomeScreen() {
           <>
             {/* Feature Card */}
             <LinearGradient
-              colors={[Colors.cream, Colors.featureEnd]}
+              colors={[Colors.surfaceElevated, Colors.background]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.featureCard}
@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.primaryMuted,
   },
   featureContent: {
     flex: 1,
@@ -575,11 +575,11 @@ const styles = StyleSheet.create({
   walletCard: {
     marginHorizontal: 20,
     marginTop: 16,
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.textPrimary, // Dark card
     borderRadius: 14,
     padding: 18,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'transparent',
   },
   walletHeader: {
     flexDirection: 'row',
@@ -590,7 +590,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: Colors.goldLight,
+    backgroundColor: 'rgba(245,166,35,0.15)', // Custom gold light tint
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
@@ -598,18 +598,17 @@ const styles = StyleSheet.create({
   walletTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
   },
   balanceLabel: {
     fontSize: 12,
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
     marginBottom: 2,
   },
   balanceAmount: {
     fontSize: 28,
     fontWeight: '700',
-    color: Colors.textPrimary,
-    // marginBottom removed to fix alignment with GIF
+    color: '#FFFFFF', // White text on dark card
   },
   negativeBalance: {
     color: Colors.error,
@@ -630,7 +629,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: 'rgba(255,255,255,0.1)', // Subtle white border
   },
   walletStatItem: {
     flex: 1,
@@ -647,7 +646,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 11,
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
   },
   statValue: {
     fontSize: 14,
@@ -656,7 +655,7 @@ const styles = StyleSheet.create({
   walletDivider: {
     width: 1,
     height: 36,
-    backgroundColor: Colors.border,
+    backgroundColor: 'rgba(255,255,255,0.1)',
     marginHorizontal: 10,
   },
 
@@ -677,12 +676,12 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 14,
-    backgroundColor: Colors.primaryMuted,
+    backgroundColor: Colors.surfaceElevated,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: Colors.primary + '15',
+    borderColor: Colors.border,
   },
   quickActionText: {
     fontSize: 10,
@@ -697,16 +696,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.secondary,
+    backgroundColor: Colors.primary,
     marginHorizontal: 20,
     marginTop: 20,
-    paddingVertical: 14,
-    borderRadius: 10,
+    paddingVertical: 16,
+    borderRadius: 14,
     gap: 8,
   },
   primaryButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   buttonChevron: {

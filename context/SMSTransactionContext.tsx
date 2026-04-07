@@ -2,7 +2,7 @@
 // Global state management for SMS transaction detection
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
-import { Alert, Platform, AppState } from 'react-native';
+import { Alert, Platform, AppState, AppStateStatus } from 'react-native';
 import * as Linking from 'expo-linking';
 import { useAuth } from '@clerk/clerk-expo';
 
@@ -201,6 +201,32 @@ export function SMSTransactionProvider({ children }: SMSTransactionProviderProps
     if (isSignedIn && hasPermission) {
       processQueue();
     }
+  }, [isSignedIn, hasPermission, processQueue]);
+
+  // AppState listener: process queue whenever app comes to foreground
+  // This handles: SMS arrives while app is backgrounded → user opens app → modal should fire
+  useEffect(() => {
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        console.log('[SMSContext] App came to foreground — checking queue');
+        processQueue();
+      }
+    };
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
+  }, [processQueue]);
+
+  // Foreground polling: check queue every 3s while app is active
+  // This handles: SMS/UPI notification arrives while user is already using the app
+  // without this, the modal would only appear after the user closes/reopens
+  useEffect(() => {
+    if (!isSignedIn || !hasPermission) return;
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') {
+        processQueue();
+      }
+    }, 3000);
+    return () => clearInterval(interval);
   }, [isSignedIn, hasPermission, processQueue]);
 
   // Handle Deep Links (legacy — kept for cold-start fallback but no longer adds to queue)

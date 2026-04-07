@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "expensetrackerapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.devak-klm.expensetrackerapp"

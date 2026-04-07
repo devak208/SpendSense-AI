@@ -315,12 +315,12 @@ export default function TransactionDetectedModal({
         <TouchableOpacity style={styles.overlayTouch} activeOpacity={1} />
 
         <Animated.View style={[styles.modalContainer, { transform: [{ translateY: slideAnim }] }]}>
-          {/* Header with gradient */}
-          <LinearGradient
-            colors={isCredit ? [Colors.successLight, '#FFFFFF'] : [Colors.errorLight, '#FFFFFF']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.header}
+          {/* Header */}
+          <View
+            style={[
+              styles.header,
+              { borderBottomWidth: 1, borderBottomColor: isCredit ? Colors.success : Colors.error }
+            ]}
           >
             {/* Decorative circles */}
             <View style={[styles.decorCircle1, { backgroundColor: isCredit ? Colors.success + '20' : Colors.error + '20' }]} />
@@ -341,7 +341,7 @@ export default function TransactionDetectedModal({
                 {transaction.bankName || 'Bank'} • {isCredit ? 'Money Received' : 'Money Spent'}
               </Text>
             </View>
-          </LinearGradient>
+          </View>
 
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flexShrink: 1 }}>
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -652,10 +652,11 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    padding: 20,
-    paddingTop: 24,
+    padding: 24,
+    backgroundColor: Colors.surfaceElevated,
     position: 'relative',
     overflow: 'hidden',
+    alignItems: 'center',
   },
   decorCircle1: {
     position: 'absolute',
@@ -871,8 +872,8 @@ const styles = StyleSheet.create({
   saveButton: {
     flex: 1,
     flexDirection: 'row',
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 16,
+    borderRadius: 14,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
