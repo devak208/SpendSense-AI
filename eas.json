@@ -11,7 +11,8 @@
         "image": "latest"
       },
       "env": {
-        "EXPO_USE_NPM_INSTALL": "1"
+        "EXPO_USE_NPM_INSTALL": "1",
+        "npm_config_legacy_peer_deps": "true"
       }
     },
     "preview": {
@@ -21,6 +22,9 @@
       "autoIncrement": true,
       "android": {
         "image": "latest"
+      },
+      "env": {
+        "npm_config_legacy_peer_deps": "true"
       }
     }
   },

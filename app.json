@@ -30,11 +30,6 @@
         "android.permission.RECEIVE_SMS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.USE_FULL_SCREEN_INTENT",
-        "android.permission.SYSTEM_ALERT_WINDOW",
-        "android.permission.READ_SMS",
-        "android.permission.RECEIVE_SMS",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.USE_FULL_SCREEN_INTENT",
         "android.permission.SYSTEM_ALERT_WINDOW"
       ]
     },
@@ -79,10 +74,10 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "38fa32fc-5a84-4bbd-992e-7947f9cb7e94"
+        "projectId": "371ece2e-935c-4ed3-a54d-a825bda9b758"
       }
     },
-    "owner": "devak_spend",
-    "runtimeVersion": "1.0.0"
+    "runtimeVersion": "1.0.0",
+    "owner": "spendai"
   }
 }
